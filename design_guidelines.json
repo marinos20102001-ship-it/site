@@ -1,0 +1,100 @@
+{
+  "theme": "LIGHT",
+  "archetype": "4",
+  "archetype_name": "Swiss & High-Contrast / Old Money Tech",
+  "colors": {
+    "primary": "#1E3A8A",
+    "primary_hover": "#1E40AF",
+    "background_main": "#FFFFFF",
+    "surface": "#F5F5F5",
+    "text_main": "#0F172A",
+    "text_muted": "#475569",
+    "border": "#E2E8F0",
+    "chart_palette": [
+      "#1E3A8A",
+      "#3B82F6",
+      "#94A3B8",
+      "#64748B",
+      "#0F172A"
+    ]
+  },
+  "typography": {
+    "heading_font": "Playfair Display",
+    "body_font": "Manrope",
+    "logo_font": "Playfair Display",
+    "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-tight font-serif text-slate-900",
+    "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-snug font-serif text-slate-900",
+    "h3": "text-xl sm:text-2xl tracking-tight font-serif text-slate-900",
+    "body": "text-base leading-relaxed font-sans text-slate-600",
+    "small_label": "text-xs uppercase tracking-[0.2em] font-sans font-semibold text-slate-500"
+  },
+  "layout_spacing": {
+    "page_padding": "px-6 md:px-12 lg:px-24",
+    "section_gap": "py-20 md:py-32",
+    "widget_padding": "p-6",
+    "grid_marketing": "grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12",
+    "grid_dashboard": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"
+  },
+  "surfaces": {
+    "marketing_card": "bg-white border border-slate-200 rounded-none md:rounded-sm",
+    "dashboard_widget": "bg-white border border-slate-200 rounded-md shadow-sm",
+    "glass_header": "bg-white/90 backdrop-blur-xl border-b border-slate-200",
+    "dark_section": "bg-[#1E3A8A] text-white"
+  },
+  "components": {
+    "button_primary": "bg-[#1E3A8A] text-white hover:bg-[#1E40AF] px-6 py-3 rounded-none transition-colors duration-200 text-sm font-semibold tracking-wide",
+    "button_secondary": "bg-transparent text-[#1E3A8A] border border-[#1E3A8A] hover:bg-slate-50 px-6 py-3 rounded-none transition-colors duration-200 text-sm font-semibold tracking-wide",
+    "input_field": "border-slate-300 rounded-none focus:ring-1 focus:ring-[#1E3A8A] focus:border-[#1E3A8A] bg-white",
+    "logo_implementation": "font-serif text-[#1E3A8A] text-2xl font-bold border-b-2 border-[#1E3A8A] inline-block pb-1"
+  },
+  "motion": {
+    "hover_state": "transition-all duration-300 ease-out",
+    "page_load": "animate-fade-in-up",
+    "widget_hover": "hover:-translate-y-1 hover:shadow-md transition-all duration-200"
+  },
+  "media_urls": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1497366754035-f200968a6e72",
+      "description": "Modern corporate hallway with glass doors, architectural and clean, suitable for a dark blue gradient overlay."
+    },
+    "about_us": {
+      "url": "https://images.unsplash.com/photo-1714974528693-f77f6fcc56af",
+      "description": "Professional team in a business meeting, ideal for the About Us section."
+    },
+    "dashboard_empty_state": {
+      "url": "https://images.unsplash.com/photo-1707157284454-553ef0a4ed0d",
+      "description": "Office desk with financial charts to use as a placeholder or empty state in the client portal."
+    },
+    "services_bg": {
+      "url": "https://images.pexels.com/photos/7433837/pexels-photo-7433837.jpeg",
+      "description": "Professionals reviewing financial graphs, used as background or side image for the services grid."
+    }
+  },
+  "iconography": {
+    "library": "lucide-react",
+    "style": "clean, 1.5px stroke width, unembellished"
+  },
+  "design_rules": {
+    "general": [
+      "Use Greek language for all content as provided.",
+      "Never use Inter or Roboto for headings; strict adherence to Playfair Display for headings and Manrope for body.",
+      "Do not use heavy drop shadows. Keep interfaces flat, architectural, and bordered (1px solid slate-200).",
+      "Use high contrast. Text on #1E3A8A must be white. Text on white/gray must be dark slate."
+    ],
+    "marketing_site": [
+      "Hero section should feature the hero background image with a dark blue overlay (e.g. bg-[#1E3A8A]/80) to ensure white text is highly readable.",
+      "The logo 'DM' must appear in header and footer as dark blue serif letters with a horizontal underline.",
+      "Services grid should feel premium; use generous padding, subtle hover lifts, and refined icons."
+    ],
+    "dashboard": [
+      "Dashboard must follow a calm, trust-first layout. Top-left widget should be the North Star metric.",
+      "Use Recharts for financial KPIs (revenue, expenses, profit trend, VAT).",
+      "Chart colors must map strictly to the blue/gray corporate palette.",
+      "Widgets must use border-slate-200 and white backgrounds on a #F5F5F5 page background."
+    ],
+    "testing": [
+      "All interactive elements must include 'data-testid' attributes (e.g., 'contact-submit-button', 'login-button')."
+    ]
+  },
+  "instructions_to_main_agent": "Implement a full-stack Next.js or React app. For the frontend, strictly use Tailwind CSS with the defined colors and typography. Integrate Shadcn UI but customize the rounded corners to be sharper (rounded-none or rounded-sm) to match the corporate premium feel. Implement Recharts for the client dashboard with the provided chart_palette. Follow all data-testid rules."
+}
