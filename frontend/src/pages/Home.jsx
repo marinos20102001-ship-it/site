@@ -69,7 +69,7 @@ export default function Home() {
       <section className="border-y border-slate-200 bg-white">
         <div className="px-6 md:px-12 lg:px-20 max-w-[1400px] mx-auto grid grid-cols-2 lg:grid-cols-4 divide-x divide-slate-200">
           {[
-            { v: "15+", l: "Έτη Εμπειρίας" },
+            { v: "Cloud", l: "Σύγχρονες Μέθοδοι" },
             { v: "250+", l: "Ενεργοί Πελάτες" },
             { v: "100%", l: "Συμμόρφωση" },
             { v: "24/7", l: "Πρόσβαση Portal" },

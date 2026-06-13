@@ -60,10 +60,11 @@ export default function Contact() {
               <iframe
                 title="DM Accounting Location"
                 data-testid="contact-map"
-                src="https://www.google.com/maps?q=Pateles+Miltiadou+9,+Athens,+Greece&output=embed"
+                src="https://www.google.com/maps/embed?pb=!4v1781361633379!6m8!1m7!1sonSUYEmWDEKJX7CQTzvsvA!2m2!1d35.33282897122981!2d25.14581843227824!3f153.72963171324963!4f20.627523161224772!5f0.7820865974627469"
                 className="w-full h-full min-h-[480px] border-0"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
+                allowFullScreen
               />
             </div>
           </div>
