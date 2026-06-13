@@ -300,6 +300,9 @@ def scan_client_folder(client_id: str) -> Dict[str, Any]:
     folder.mkdir(parents=True, exist_ok=True)
     records: List[Dict[str, Any]] = []
     files_info = []
+    tb_data: Optional[Dict[str, Any]] = None
+    tb_file_mtime = 0.0
+
     for f in sorted(folder.iterdir()):
         if not f.is_file():
             continue
@@ -307,15 +310,55 @@ def scan_client_folder(client_id: str) -> Dict[str, Any]:
         size = f.stat().st_size
         files_info.append({"name": f.name, "size": size, "ext": ext,
                            "modified": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat()})
-        if ext == ".xlsx":
-            records.extend(parse_xlsx(f))
+        if ext in (".xlsx", ".xls"):
+            # Try trial balance first
+            parsed = parse_trial_balance(f)
+            if parsed and parsed.get("accounts"):
+                if f.stat().st_mtime > tb_file_mtime:
+                    tb_data = parsed
+                    tb_file_mtime = f.stat().st_mtime
+                continue  # skip date/type/amount parsing for TB files
+            # Fall back to row-based parser
+            if ext == ".xlsx":
+                records.extend(parse_xlsx(f))
         elif ext == ".csv":
             records.extend(parse_csv(f))
         elif ext == ".pdf":
             records.extend(parse_pdf(f))
+
+    # Merge trial balance into records as synthetic monthly entries
+    if tb_data:
+        year = tb_data.get("year") or datetime.now(timezone.utc).year
+        for acc in tb_data["accounts"]:
+            cat = acc["category"]
+            for m_idx, vals in acc["monthly"].items():
+                debit = vals.get("debit") or 0.0
+                credit = vals.get("credit") or 0.0
+                if debit == 0 and credit == 0:
+                    continue
+                date_str = f"{year:04d}-{m_idx:02d}-01"
+                if cat == "7":  # income - credit side
+                    if credit:
+                        records.append({"date": date_str, "type": "income", "amount": credit,
+                                        "description": f"{acc['code']} {acc['description']}"})
+                elif cat == "6":  # expense - debit side
+                    if debit:
+                        records.append({"date": date_str, "type": "expense", "amount": debit,
+                                        "description": f"{acc['code']} {acc['description']}"})
+                elif cat == "54":
+                    # VAT obligation = credit (output VAT); VAT input = debit (deductible)
+                    net = credit - debit  # positive = payable
+                    if net > 0:
+                        records.append({"date": date_str, "type": "vat", "amount": net,
+                                        "description": f"{acc['code']} {acc['description']}"})
+                    elif net < 0:
+                        records.append({"date": date_str, "type": "vat", "amount": abs(net),
+                                        "description": f"{acc['code']} {acc['description']} (πιστωτικό)"})
+
     agg = aggregate_records(records)
     agg["files"] = files_info
     agg["recent"] = sorted(records, key=lambda r: r.get("date") or "", reverse=True)[:20]
+    agg["has_trial_balance"] = tb_data is not None
     return agg
 
 
