@@ -114,6 +114,7 @@ class ClientCreate(BaseModel):
     company: Optional[str] = ""
     phone: Optional[str] = ""
     afm: Optional[str] = ""  # ΑΦΜ
+    books_type: Optional[str] = "simple"  # "simple" (απλογραφικά) | "double" (διπλογραφικά)
 
 
 class UserOut(BaseModel):
@@ -318,6 +319,235 @@ def scan_client_folder(client_id: str) -> Dict[str, Any]:
     return agg
 
 
+# ------------ Trial Balance (Απλογραφικά Βιβλία) ------------
+GREEK_MONTHS = [
+    "Ιανουάριος", "Φεβρουάριος", "Μάρτιος", "Απρίλιος", "Μάιος", "Ιούνιος",
+    "Ιούλιος", "Αύγουστος", "Σεπτέμβριος", "Οκτώβριος", "Νοέμβριος", "Δεκέμβριος"
+]
+GREEK_MONTHS_GEN = [  # genitive forms sometimes found in headers
+    "Ιανουαρίου", "Φεβρουαρίου", "Μαρτίου", "Απριλίου", "Μαΐου", "Ιουνίου",
+    "Ιουλίου", "Αυγούστου", "Σεπτεμβρίου", "Οκτωβρίου", "Νοεμβρίου", "Δεκεμβρίου"
+]
+
+CATEGORY_LABELS = {
+    "1": "Πάγια",
+    "2": "Αγορές / Εμπορεύματα / Πρώτες Ύλες",
+    "54": "ΦΠΑ",
+    "6": "Έξοδα",
+    "7": "Έσοδα",
+}
+
+
+def _is_primary_code(code: str) -> bool:
+    """Primary account: no '-' separator (e.g. '54' yes, '54-0087' no)."""
+    c = str(code or "").strip()
+    return bool(c) and "-" not in c and "." not in c
+
+
+def _category_for(code: str) -> Optional[str]:
+    c = str(code or "").strip()
+    if c == "54":
+        return "54"
+    if not c:
+        return None
+    first = c[0]
+    if first in ("1", "2", "6", "7"):
+        return first
+    return None
+
+
+def _detect_month_columns(headers: List[str]) -> Dict[int, Dict[str, int]]:
+    """Map month index (1-12) -> {"debit": col_idx, "credit": col_idx, "balance": col_idx}, year detected."""
+    mapping: Dict[int, Dict[str, int]] = {}
+    for idx, h in enumerate(headers):
+        if not h:
+            continue
+        h_str = str(h)
+        h_lower = h_str.lower()
+        kind = None
+        if "χρέωση" in h_lower or "χρεωση" in h_lower:
+            kind = "debit"
+        elif "πίστωση" in h_lower or "πιστωση" in h_lower:
+            kind = "credit"
+        elif "υπόλοιπο" in h_lower or "υπολοιπο" in h_lower:
+            kind = "balance"
+        if not kind:
+            continue
+        # find month
+        month_idx = None
+        for i, name in enumerate(GREEK_MONTHS, start=1):
+            if name.lower() in h_lower or GREEK_MONTHS_GEN[i - 1].lower() in h_lower:
+                month_idx = i
+                break
+        if month_idx is None:
+            continue
+        mapping.setdefault(month_idx, {})[kind] = idx
+    return mapping
+
+
+def _read_workbook_rows(path: Path) -> Optional[List[List[Any]]]:
+    """Return list of rows (each a list of cell values). Supports .xlsx and .xls."""
+    ext = path.suffix.lower()
+    try:
+        if ext == ".xlsx":
+            wb = load_workbook(filename=str(path), data_only=True, read_only=True)
+            ws = wb.worksheets[0]
+            return [list(r) for r in ws.iter_rows(values_only=True)]
+        if ext == ".xls":
+            import xlrd
+            wb = xlrd.open_workbook(str(path))
+            s = wb.sheet_by_index(0)
+            return [[s.cell_value(r, c) for c in range(s.ncols)] for r in range(s.nrows)]
+    except Exception as e:
+        logger.error(f"workbook open error {path}: {e}")
+    return None
+
+
+def parse_trial_balance(path: Path) -> Optional[Dict[str, Any]]:
+    """Parse a Greek trial-balance workbook. Returns {year, months, accounts} or None."""
+    rows = _read_workbook_rows(path)
+    if not rows or len(rows) < 2:
+        return None
+    headers = [("" if c is None else str(c)).strip() for c in rows[0]]
+    # Must include "Λογαριασμός" or first row clearly looks like header
+    if not any("λογαριασμ" in h.lower() for h in headers):
+        return None
+    month_cols = _detect_month_columns(headers)
+    if not month_cols:
+        return None
+
+    # detect year from headers
+    year = None
+    for h in headers:
+        m = re.search(r"(20\d{2})", h)
+        if m:
+            year = int(m.group(1))
+            break
+
+    # iterate data rows
+    accounts: List[Dict[str, Any]] = []
+    for r in rows[1:]:
+        if not r or all(c is None or str(c).strip() == "" for c in r):
+            continue
+        code = str(r[0] if len(r) > 0 else "").strip()
+        if not code or not _is_primary_code(code):
+            continue
+        category = _category_for(code)
+        if category is None:
+            continue
+        desc = str(r[1] if len(r) > 1 else "").strip()
+        monthly = {}
+        for m_idx, cols in month_cols.items():
+            debit = parse_amount(r[cols["debit"]]) if "debit" in cols and cols["debit"] < len(r) else None
+            credit = parse_amount(r[cols["credit"]]) if "credit" in cols and cols["credit"] < len(r) else None
+            monthly[m_idx] = {"debit": debit or 0.0, "credit": credit or 0.0}
+        accounts.append({
+            "code": code,
+            "description": desc,
+            "category": category,
+            "category_label": CATEGORY_LABELS.get(category, category),
+            "monthly": monthly,
+        })
+
+    return {
+        "year": year,
+        "months_available": sorted(month_cols.keys()),
+        "accounts": accounts,
+    }
+
+
+def latest_trial_balance(client_id: str) -> Optional[Dict[str, Any]]:
+    """Return the most recently uploaded trial balance for a client, with upload timestamp."""
+    folder = CLIENTS_DATA_DIR / client_id
+    if not folder.exists():
+        return None
+    candidates = []
+    for f in folder.iterdir():
+        if f.is_file() and f.suffix.lower() in (".xls", ".xlsx"):
+            candidates.append(f)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    for f in candidates:
+        parsed = parse_trial_balance(f)
+        if parsed and parsed.get("accounts"):
+            mtime = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+            parsed["source_file"] = f.name
+            parsed["uploaded_at"] = mtime.isoformat()
+            return parsed
+    return None
+
+
+def build_simple_books(client_id: str) -> Dict[str, Any]:
+    """Build display data for απλογραφικά: target month = current_month - 3."""
+    today = datetime.now(timezone.utc)
+    # target month = current - 3 (e.g. June -> March)
+    target_month = today.month - 3
+    target_year = today.year
+    while target_month <= 0:
+        target_month += 12
+        target_year -= 1
+
+    tb = latest_trial_balance(client_id)
+    if not tb:
+        return {
+            "has_data": False,
+            "target_month": target_month,
+            "target_year": target_year,
+            "target_month_name": GREEK_MONTHS[target_month - 1],
+        }
+
+    # If target month has no data, fall back to the latest month with data
+    months_with_data = set()
+    for acc in tb["accounts"]:
+        for m_idx, vals in acc["monthly"].items():
+            if vals["debit"] or vals["credit"]:
+                months_with_data.add(m_idx)
+
+    display_month = target_month
+    fallback_used = False
+    if target_month not in months_with_data and months_with_data:
+        display_month = max(months_with_data)
+        fallback_used = True
+
+    # build category groups for display month
+    groups: Dict[str, Dict[str, Any]] = {}
+    for cat_key, cat_label in CATEGORY_LABELS.items():
+        groups[cat_key] = {"key": cat_key, "label": cat_label, "rows": [], "total_debit": 0.0, "total_credit": 0.0}
+
+    for acc in tb["accounts"]:
+        vals = acc["monthly"].get(display_month, {"debit": 0.0, "credit": 0.0})
+        if vals["debit"] == 0 and vals["credit"] == 0:
+            continue
+        g = groups[acc["category"]]
+        g["rows"].append({
+            "code": acc["code"],
+            "description": acc["description"],
+            "debit": round(vals["debit"], 2),
+            "credit": round(vals["credit"], 2),
+        })
+        g["total_debit"] += vals["debit"]
+        g["total_credit"] += vals["credit"]
+
+    for g in groups.values():
+        g["total_debit"] = round(g["total_debit"], 2)
+        g["total_credit"] = round(g["total_credit"], 2)
+
+    return {
+        "has_data": True,
+        "year": tb.get("year") or display_month and target_year,
+        "source_file": tb["source_file"],
+        "uploaded_at": tb["uploaded_at"],
+        "target_month": target_month,
+        "target_year": target_year,
+        "target_month_name": GREEK_MONTHS[target_month - 1],
+        "display_month": display_month,
+        "display_month_name": GREEK_MONTHS[display_month - 1],
+        "fallback_used": fallback_used,
+        "groups": list(groups.values()),
+    }
+
+
 # ------------ Routes: Auth ------------
 @api.get("/")
 async def root():
@@ -335,7 +565,9 @@ async def login(payload: LoginIn, response: Response):
     set_auth_cookies(response, access, refresh)
     return {"id": user["id"], "email": user["email"], "name": user["name"],
             "role": user["role"], "company": user.get("company", ""),
-            "phone": user.get("phone", ""), "afm": user.get("afm", ""), "access_token": access}
+            "phone": user.get("phone", ""), "afm": user.get("afm", ""),
+            "books_type": user.get("books_type", "simple"),
+            "access_token": access}
 
 
 @api.post("/auth/logout")
@@ -373,6 +605,7 @@ async def create_client(payload: ClientCreate, admin: dict = Depends(require_adm
         "company": payload.company or "",
         "phone": payload.phone or "",
         "afm": payload.afm or "",
+        "books_type": payload.books_type if payload.books_type in ("simple", "double") else "simple",
         "role": "client",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -387,7 +620,8 @@ async def create_client(payload: ClientCreate, admin: dict = Depends(require_adm
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
     return {"id": new_id, "email": email, "name": payload.name, "role": "client",
-            "company": doc["company"], "phone": doc["phone"], "afm": doc["afm"]}
+            "company": doc["company"], "phone": doc["phone"], "afm": doc["afm"],
+            "books_type": doc["books_type"]}
 
 
 @api.delete("/admin/clients/{client_id}")
@@ -406,7 +640,7 @@ async def delete_client(client_id: str, admin: dict = Depends(require_admin)):
 
 
 # ------------ Routes: Files ------------
-ALLOWED_EXT = {".xlsx", ".csv", ".pdf"}
+ALLOWED_EXT = {".xlsx", ".xls", ".csv", ".pdf"}
 
 
 @api.post("/admin/clients/{client_id}/files")
@@ -416,7 +650,7 @@ async def upload_file(client_id: str, file: UploadFile = File(...), admin: dict 
         raise HTTPException(status_code=404, detail="Πελάτης δε βρέθηκε")
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_EXT:
-        raise HTTPException(status_code=400, detail="Επιτρέπονται μόνο .xlsx, .csv, .pdf")
+        raise HTTPException(status_code=400, detail="Επιτρέπονται μόνο .xlsx, .xls, .csv, .pdf")
     folder = CLIENTS_DATA_DIR / client_id
     folder.mkdir(parents=True, exist_ok=True)
     # sanitize filename
@@ -458,6 +692,45 @@ async def client_download(filename: str, user: dict = Depends(get_current_user))
     if not path.exists():
         raise HTTPException(status_code=404, detail="Δε βρέθηκε")
     return FileResponse(str(path), filename=filename)
+
+
+# ------------ Routes: Simple Books (Απλογραφικά) ------------
+@api.get("/client/books/simple")
+async def client_simple_books(user: dict = Depends(get_current_user)):
+    if user["role"] != "client":
+        raise HTTPException(status_code=403, detail="Μόνο για πελάτες")
+    if user.get("books_type", "simple") != "simple":
+        return {"books_type": user.get("books_type"), "has_data": False, "message": "Διπλογραφικά βιβλία — δε διαβάζονται από αυτή τη ροή ακόμα."}
+    data = build_simple_books(user["id"])
+    data["books_type"] = "simple"
+    return data
+
+
+@api.get("/admin/clients/{client_id}/books/simple")
+async def admin_client_simple_books(client_id: str, admin: dict = Depends(require_admin)):
+    user = await db.users.find_one({"id": client_id, "role": "client"})
+    if not user:
+        raise HTTPException(status_code=404, detail="Πελάτης δε βρέθηκε")
+    if user.get("books_type", "simple") != "simple":
+        return {"books_type": user.get("books_type"), "has_data": False, "message": "Διπλογραφικά βιβλία."}
+    data = build_simple_books(client_id)
+    data["books_type"] = "simple"
+    data["client"] = {"id": user["id"], "name": user["name"], "company": user.get("company", "")}
+    return data
+
+
+@api.patch("/admin/clients/{client_id}")
+async def update_client(client_id: str, payload: dict, admin: dict = Depends(require_admin)):
+    allowed = {"name", "company", "phone", "afm", "books_type"}
+    update_doc = {k: v for k, v in payload.items() if k in allowed}
+    if "books_type" in update_doc and update_doc["books_type"] not in ("simple", "double"):
+        raise HTTPException(status_code=400, detail="books_type invalid")
+    if not update_doc:
+        raise HTTPException(status_code=400, detail="Χωρίς αλλαγές")
+    result = await db.users.update_one({"id": client_id, "role": "client"}, {"$set": update_doc})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Πελάτης δε βρέθηκε")
+    return {"ok": True}
 
 
 # ------------ Routes: Dashboards ------------
@@ -522,6 +795,11 @@ app.add_middleware(
 async def startup():
     await db.users.create_index("email", unique=True)
     await db.audit_logs.create_index("timestamp")
+    # backfill books_type default for existing clients
+    await db.users.update_many(
+        {"role": "client", "books_type": {"$exists": False}},
+        {"$set": {"books_type": "simple"}},
+    )
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@dmaccounting.gr").lower()
     admin_pw = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -557,10 +835,15 @@ async def startup():
             "company": "Demo Επιχείρηση Α.Ε.",
             "phone": "210 1234567",
             "afm": "123456789",
+            "books_type": "simple",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         folder = CLIENTS_DATA_DIR / demo_id
         folder.mkdir(parents=True, exist_ok=True)
+        # copy bundled sample trial balance xls if available
+        sample_tb = Path("/app/sample_data/eikona.xls")
+        if sample_tb.exists():
+            (folder / "isozygio_2026.xls").write_bytes(sample_tb.read_bytes())
         # Sample CSV with Greek headers
         sample = folder / "synolika_2025.csv"
         sample.write_text(

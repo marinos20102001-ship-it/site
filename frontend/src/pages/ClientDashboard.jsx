@@ -5,7 +5,8 @@ import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { TrendingUp, TrendingDown, Wallet, AlertCircle, FileText, Download, Calendar } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, AlertCircle, FileText, Download, Calendar, BookOpen, ArrowRight } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const CHART_COLORS = ["#1E3A8A", "#3B82F6", "#94A3B8", "#64748B", "#0F172A"];
 
@@ -69,6 +70,29 @@ export default function ClientDashboard() {
             {data.records_count} εγγραφές · {data.files?.length || 0} αρχεία
           </div>
         </div>
+
+        {/* Απλογραφικά Βιβλία Banner */}
+        {user?.books_type === "simple" && (
+          <Link
+            to="/dashboard/books"
+            data-testid="books-link-banner"
+            className="block bg-[#1E3A8A] text-white mb-10 group hover:bg-[#1E40AF] transition-colors"
+          >
+            <div className="flex items-center justify-between p-6 md:p-7">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 bg-white/10 flex items-center justify-center shrink-0">
+                  <BookOpen size={22} strokeWidth={1.5} />
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200 font-semibold">— Απλογραφικά Βιβλία</div>
+                  <div className="font-serif-display text-xl md:text-2xl mt-1">Ισοζύγιο Λογαριασμών</div>
+                  <div className="text-xs text-blue-200 mt-1">Πάγια · Αγορές · ΦΠΑ · Έξοδα · Έσοδα</div>
+                </div>
+              </div>
+              <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200">

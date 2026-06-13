@@ -12,6 +12,7 @@ import Login from "@/pages/Login";
 import ClientDashboard from "@/pages/ClientDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
 import TaxCalculator from "@/pages/TaxCalculator";
+import SimpleBooks from "@/pages/SimpleBooks";
 import { Toaster } from "sonner";
 
 function App() {
@@ -32,6 +33,14 @@ function App() {
               element={
                 <ProtectedRoute role="client">
                   <Layout><ClientDashboard /></Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/dashboard/books"
+              element={
+                <ProtectedRoute role="client">
+                  <Layout><SimpleBooks /></Layout>
                 </ProtectedRoute>
               }
             />

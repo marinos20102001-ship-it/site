@@ -118,18 +118,24 @@ export default function AdminDashboard() {
                   <th className="text-left p-4">Email</th>
                   <th className="text-left p-4">Εταιρεία</th>
                   <th className="text-left p-4">ΑΦΜ</th>
+                  <th className="text-left p-4">Βιβλία</th>
                   <th className="text-right p-4">Ενέργειες</th>
                 </tr>
               </thead>
               <tbody>
                 {clients.length === 0 ? (
-                  <tr><td colSpan="5" className="text-center text-slate-400 py-12">Κανένας πελάτης ακόμα.</td></tr>
+                  <tr><td colSpan="6" className="text-center text-slate-400 py-12">Κανένας πελάτης ακόμα.</td></tr>
                 ) : clients.map((c) => (
                   <tr key={c.id} data-testid={`client-row-${c.id}`} className="border-t border-slate-100">
                     <td className="p-4 text-slate-900 font-medium">{c.name}</td>
                     <td className="p-4 text-slate-600">{c.email}</td>
                     <td className="p-4 text-slate-600">{c.company || "—"}</td>
                     <td className="p-4 text-slate-600">{c.afm || "—"}</td>
+                    <td className="p-4">
+                      <span className={`text-[10px] uppercase tracking-wider px-2 py-1 ${c.books_type === "double" ? "bg-slate-700 text-white" : "bg-blue-50 text-[#1E3A8A] border border-[#1E3A8A]"}`}>
+                        {c.books_type === "double" ? "Διπλογραφικά" : "Απλογραφικά"}
+                      </span>
+                    </td>
                     <td className="p-4">
                       <div className="flex justify-end gap-2">
                         <button
@@ -167,7 +173,7 @@ export default function AdminDashboard() {
 }
 
 function CreateClientModal({ onClose, onSaved }) {
-  const [form, setForm] = useState({ email: "", password: "", name: "", company: "", phone: "", afm: "" });
+  const [form, setForm] = useState({ email: "", password: "", name: "", company: "", phone: "", afm: "", books_type: "simple" });
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -213,6 +219,25 @@ function CreateClientModal({ onClose, onSaved }) {
               />
             </div>
           ))}
+          <div>
+            <label className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold">Κατηγορία Βιβλίων</label>
+            <div className="mt-1 grid grid-cols-2 gap-px bg-slate-200">
+              {[
+                { v: "simple", l: "Απλογραφικά" },
+                { v: "double", l: "Διπλογραφικά" },
+              ].map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setForm({ ...form, books_type: o.v })}
+                  data-testid={`new-client-books-${o.v}`}
+                  className={`py-2.5 text-xs font-semibold tracking-wider uppercase transition-colors ${form.books_type === o.v ? "bg-[#1E3A8A] text-white" : "bg-white text-slate-700 hover:bg-slate-50"}`}
+                >
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          </div>
           {err && <div data-testid="create-error" className="text-sm text-red-600">{err}</div>}
           <button type="submit" disabled={loading} data-testid="create-client-submit" className="w-full py-3 bg-[#1E3A8A] text-white text-xs tracking-[0.25em] uppercase font-semibold hover:bg-[#1E40AF] disabled:opacity-60">
             {loading ? "Αποθήκευση…" : "Δημιουργία Πελάτη"}
@@ -300,7 +325,7 @@ function ClientDetailModal({ client, onClose }) {
                 <h4 className="font-serif-display text-xl text-slate-900">Αρχεία ({data.files?.length || 0})</h4>
                 <label data-testid="upload-file-label" className="inline-flex items-center gap-2 px-4 py-2 bg-[#1E3A8A] text-white text-xs tracking-[0.2em] uppercase font-semibold cursor-pointer hover:bg-[#1E40AF]">
                   <Upload size={14} /> {uploading ? "Ανέβασμα…" : "Ανέβασμα"}
-                  <input type="file" accept=".xlsx,.csv,.pdf" data-testid="upload-file-input" onChange={upload} className="hidden" />
+                  <input type="file" accept=".xlsx,.xls,.csv,.pdf" data-testid="upload-file-input" onChange={upload} className="hidden" />
                 </label>
               </div>
 
@@ -313,7 +338,12 @@ function ClientDetailModal({ client, onClose }) {
                   <div key={i} className="flex items-center justify-between p-3 border border-slate-200">
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="text-[10px] uppercase bg-slate-100 px-2 py-1 text-slate-600">{f.ext.replace(".", "")}</span>
-                      <span className="text-sm text-slate-800 truncate">{f.name}</span>
+                      <div className="min-w-0">
+                        <div className="text-sm text-slate-800 truncate">{f.name}</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          Ανέβηκε: {new Date(f.modified).toLocaleString("el-GR", { dateStyle: "short", timeStyle: "short" })}
+                        </div>
+                      </div>
                     </div>
                     <button onClick={() => removeFile(f.name)} className="text-red-600 hover:text-red-800" data-testid={`delete-file-${i}`}>
                       <Trash2 size={14} />
