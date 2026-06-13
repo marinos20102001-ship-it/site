@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Lock, Mail, LogIn, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -10,18 +10,25 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const { login } = useAuth();
+  const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Redirect after user state populates (covers both fresh login + already-authed visits)
+  useEffect(() => {
+    if (user && user.role) {
+      const dest = user.role === "admin" ? "/admin" : "/dashboard";
+      navigate(location.state?.from?.pathname || dest, { replace: true });
+    }
+  }, [user, navigate, location.state]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr("");
     setLoading(true);
     try {
-      const data = await login(email, password);
-      const dest = data.role === "admin" ? "/admin" : "/dashboard";
-      navigate(location.state?.from?.pathname || dest, { replace: true });
+      await login(email, password);
+      // redirect handled by useEffect above when user state updates
     } catch (e) {
       setErr(e.message);
     } finally {

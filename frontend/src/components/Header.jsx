@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 const links = [
   { to: "/", label: "Αρχική" },
   { to: "/services", label: "Υπηρεσίες" },
+  { to: "/tax-calculator", label: "Υπολογιστής Φόρου" },
   { to: "/about", label: "Σχετικά" },
   { to: "/contact", label: "Επικοινωνία" },
 ];

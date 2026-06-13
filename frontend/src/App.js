@@ -11,6 +11,7 @@ import Contact from "@/pages/Contact";
 import Login from "@/pages/Login";
 import ClientDashboard from "@/pages/ClientDashboard";
 import AdminDashboard from "@/pages/AdminDashboard";
+import TaxCalculator from "@/pages/TaxCalculator";
 import { Toaster } from "sonner";
 
 function App() {
@@ -24,6 +25,7 @@ function App() {
             <Route path="/services" element={<Layout><Services /></Layout>} />
             <Route path="/about" element={<Layout><About /></Layout>} />
             <Route path="/contact" element={<Layout><Contact /></Layout>} />
+            <Route path="/tax-calculator" element={<Layout><TaxCalculator /></Layout>} />
             <Route path="/login" element={<Login />} />
             <Route
               path="/dashboard"

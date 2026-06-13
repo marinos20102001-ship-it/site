@@ -21,6 +21,7 @@ export default function Footer() {
           <ul className="space-y-2.5 text-sm">
             <li><Link to="/" className="hover:text-white transition-colors">Αρχική</Link></li>
             <li><Link to="/services" className="hover:text-white transition-colors">Υπηρεσίες</Link></li>
+            <li><Link to="/tax-calculator" className="hover:text-white transition-colors">Υπολογιστής Φόρου</Link></li>
             <li><Link to="/about" className="hover:text-white transition-colors">Σχετικά με Εμάς</Link></li>
             <li><Link to="/contact" className="hover:text-white transition-colors">Επικοινωνία</Link></li>
             <li><Link to="/login" className="hover:text-white transition-colors">Πελατειακή Σύνδεση</Link></li>

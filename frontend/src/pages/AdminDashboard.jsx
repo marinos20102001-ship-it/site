@@ -171,6 +171,12 @@ function CreateClientModal({ onClose, onSaved }) {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   const submit = async (e) => {
     e.preventDefault();
     setErr(""); setLoading(true);
@@ -183,11 +189,15 @@ function CreateClientModal({ onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" data-testid="create-client-modal">
-      <div className="bg-white max-w-lg w-full">
+    <div
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+      data-testid="create-client-modal"
+      onClick={onClose}
+    >
+      <div className="bg-white max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-slate-200">
           <h3 className="font-serif-display text-2xl text-slate-900">Νέος Πελάτης</h3>
-          <button onClick={onClose} data-testid="modal-close-btn"><X size={20} /></button>
+          <button onClick={onClose} data-testid="modal-close-btn" className="p-2 hover:bg-slate-100"><X size={20} /></button>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
           {["name","email","password","company","phone","afm"].map((k) => (
@@ -217,6 +227,12 @@ function ClientDetailModal({ client, onClose }) {
   const [data, setData] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const load = async () => {
     try {
