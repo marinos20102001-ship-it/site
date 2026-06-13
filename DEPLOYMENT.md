@@ -1,119 +1,202 @@
-# DM Accounting — Πλήρης οδηγός Deployment (χωρίς Emergent)
+# DM Accounting — 100% ΔΩΡΕΑΝ Deployment Guide (Μόνο το domain πληρώνεται)
+
+## Στόχος
+Να τρέξετε όλο το site χωρίς να πληρώνετε τίποτα παραπάνω από το domain (~10€/έτος).
 
 ## Αρχιτεκτονική
-- **Frontend** (React) → Vercel (δωρεάν)
-- **Backend** (FastAPI) → Render.com (`$7/μήνα`, με persistent disk για uploaded αρχεία)
-- **MongoDB** → MongoDB Atlas (δωρεάν 512 MB)
-- **Domain** → papaki.gr ή namecheap.com (~`10-20€/έτος`)
+- **Frontend** (React) → **Vercel** (δωρεάν)
+- **Backend** (FastAPI + persistent disk) → **Fly.io** (δωρεάν - 3GB)
+- **MongoDB** → **MongoDB Atlas M0** (δωρεάν - 512MB)
+- **Domain** → papaki.gr (~10€/έτος)
+
+> ⚠️ Το Fly.io ζητάει πιστωτική κάρτα ΜΟΝΟ για επαλήθευση. Δεν χρεώνει τίποτα όσο μένετε στο free tier (3GB storage, 3 VMs).
 
 ---
 
-## 1. MongoDB Atlas (δωρεάν)
+## ΒΗΜΑ 1 — Domain
+1. **papaki.gr** → αγοράστε `dmaccounting.gr` (~10€/έτος)
 
+## ΒΗΜΑ 2 — MongoDB Atlas (δωρεάν)
 1. https://www.mongodb.com/cloud/atlas/register
-2. Create deployment → **M0 Free** στο Frankfurt
-3. Username/Password — αποθηκεύστε τα!
-4. Network Access → Allow from anywhere (`0.0.0.0/0`)
-5. Connect → Drivers → αντιγράψτε το connection string:
+2. Create cluster → **M0 Free** στο **Frankfurt**
+3. Username `dmadmin` + δυνατός κωδικός (αποθηκεύστε!)
+4. Network Access → **Allow from anywhere** (0.0.0.0/0)
+5. Database → Connect → Drivers → αντιγράψτε connection string
+6. Αλλάξτε `<password>` και προσθέστε `/dm_accounting` πριν το `?`:
    ```
-   mongodb+srv://USER:PASS@cluster.xxx.mongodb.net/dm_accounting?retryWrites=true&w=majority
+   mongodb+srv://dmadmin:YOUR_PASS@cluster.xxx.mongodb.net/dm_accounting?retryWrites=true&w=majority
    ```
 
-## 2. Backend στο Render.com
-
-1. Push τον κώδικα στο GitHub (αν δεν έχει γίνει)
-2. https://render.com → Sign up με GitHub
-3. **New +** → **Web Service** → επιλέξτε το repo σας
-4. Render διαβάζει αυτόματα το `render.yaml`
-5. **Δώστε τιμές στα ENV VARS** στο dashboard:
-   - `MONGO_URL` = το connection string από Atlas
-   - `ADMIN_PASSWORD` = δυνατός κωδικός (12+ chars)
-   - `FRONTEND_URL` = θα δωθεί μετά (Βήμα 3)
-   - `CORS_ORIGINS` = ίδιο με FRONTEND_URL
-6. **Deploy!** Σε ~5 λεπτά θα δείτε π.χ. `https://dm-accounting-backend.onrender.com`
-7. Δοκιμάστε: `https://dm-accounting-backend.onrender.com/api/` → πρέπει να γυρίσει `{"app":"DM Accounting","status":"ok"}`
-
-## 3. Frontend στο Vercel
-
-1. https://vercel.com → Sign up με GitHub
-2. **Add New** → **Project** → επιλέξτε το repo σας
-3. **Root Directory**: `frontend`
-4. **Framework**: Create React App
-5. **Environment Variables**:
-   - `REACT_APP_BACKEND_URL` = το URL του Render (π.χ. `https://dm-accounting-backend.onrender.com`)
-6. **Deploy!**
-7. Θα πάρετε URL π.χ. `https://dm-accounting.vercel.app`
-8. **Επιστρέψτε στο Render** και βάλτε αυτό το URL στα `FRONTEND_URL` και `CORS_ORIGINS` → "Save changes" (αυτό θα κάνει redeploy το backend)
-
-## 4. Domain Connection
-
-### Στο Vercel (frontend)
-1. Project → Settings → **Domains**
-2. Add → πληκτρολογήστε `dmaccounting.gr` και `www.dmaccounting.gr`
-3. Το Vercel θα σας δώσει DNS records (A και CNAME) να βάλετε στον registrar (papaki)
-
-### Στον registrar (papaki/namecheap)
-1. Domain → Manage → DNS Records
-2. Διαγράψτε όλα τα παλιά A/CNAME records
-3. Προσθέστε αυτά που σας έδωσε το Vercel
-4. Αναμονή 5–30 λεπτά για propagation
-
-### Backend custom domain (προαιρετικά)
-Αν θέλετε το backend σε `api.dmaccounting.gr`:
-1. Render → Settings → **Custom Domains** → `api.dmaccounting.gr`
-2. Στον registrar: CNAME `api` → το onrender.com URL
-3. Στο Vercel ENV: βάλτε `REACT_APP_BACKEND_URL=https://api.dmaccounting.gr`
-
-## 5. Έλεγχος Παραγωγής
-
-- Πηγαίνετε στο `https://dmaccounting.gr`
-- Login με admin (`marinosgr@yahoo.gr` + ADMIN_PASSWORD)
-- Δημιουργήστε πελάτη, ανεβάστε excel, ελέγξτε ισοζύγιο
-- Επιβεβαιώστε ότι το λουκέτο (HTTPS 🔒) είναι πράσινο
-
-## 6. Backup MongoDB
-
-### Manual backup (Mac/Linux)
+## ΒΗΜΑ 3 — Push κώδικα στο GitHub
 ```bash
-# Εγκαταστήστε mongodump
-brew install mongodb-database-tools   # Mac
-# ή κατεβάστε από https://www.mongodb.com/try/download/database-tools
-
-# Export
-mongodump --uri="mongodb+srv://USER:PASS@cluster.xxx.mongodb.net/dm_accounting" --out=./backup
-
-# Restore
-mongorestore --uri="mongodb+srv://USER:PASS@..." ./backup
+cd /your/local/folder
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/YOURUSER/dm-accounting.git
+git push -u origin main
 ```
 
-### Auto backup
-Στο Atlas → Cluster → Backup → ενεργοποιήστε **Continuous Cloud Backup** (~$2/μήνα για 2GB).
+## ΒΗΜΑ 4 — Backend στο Fly.io (δωρεάν με persistent disk)
 
-## 7. Συντήρηση
+### A. Εγκατάσταση Fly CLI
+```bash
+# Mac
+brew install flyctl
+
+# Linux
+curl -L https://fly.io/install.sh | sh
+
+# Windows (PowerShell)
+iwr https://fly.io/install.ps1 -useb | iex
+```
+
+### B. Login
+```bash
+flyctl auth signup     # ή flyctl auth login αν έχετε ήδη
+```
+(Θα ζητήσει credit card ΜΟΝΟ για verification — δεν χρεώνει στο free tier.)
+
+### Γ. Launch app (από το repo σας)
+```bash
+cd /path/to/dm-accounting
+flyctl launch --copy-config --no-deploy
+```
+- Όταν ρωτήσει `App name?` → `dm-accounting` (ή δικό σας μοναδικό)
+- Region → `fra` (Frankfurt)
+- Postgres? → **No**
+- Redis? → **No**
+
+### Δ. Δημιουργία persistent volume (δωρεάν 3GB)
+```bash
+flyctl volumes create dm_data --region fra --size 1
+```
+
+### E. Καταχώρηση secrets (environment variables)
+```bash
+flyctl secrets set \
+  MONGO_URL="mongodb+srv://dmadmin:YOUR_PASS@cluster.xxx.mongodb.net/dm_accounting?retryWrites=true&w=majority" \
+  JWT_SECRET="$(openssl rand -hex 32)" \
+  ADMIN_EMAIL="marinosgr@yahoo.gr" \
+  ADMIN_PASSWORD="ΒΑΛΤΕ_ΔΥΝΑΤΟ_ΚΩΔΙΚΟ_ΕΔΩ" \
+  FRONTEND_URL="https://dmaccounting.gr" \
+  CORS_ORIGINS="https://dmaccounting.gr,https://www.dmaccounting.gr"
+```
+
+### Στ. Deploy!
+```bash
+flyctl deploy
+```
+Περιμένετε ~3 λεπτά. Όταν τελειώσει, το URL είναι:
+```
+https://dm-accounting.fly.dev
+```
+
+### Z. Δοκιμή
+Ανοίξτε `https://dm-accounting.fly.dev/api/` — πρέπει να δείτε `{"app":"DM Accounting","status":"ok"}`
+
+## ΒΗΜΑ 5 — Frontend στο Vercel (δωρεάν)
+
+1. https://vercel.com/signup → Continue with GitHub
+2. **Add New** → **Project** → επιλέξτε το repo σας
+3. **Root Directory**: `frontend`
+4. **Framework Preset**: Create React App
+5. **Environment Variables**:
+   - `REACT_APP_BACKEND_URL` = `https://dm-accounting.fly.dev`
+6. **Deploy** → URL: `https://dm-accounting.vercel.app`
+
+## ΒΗΜΑ 6 — Σύνδεση Domain (papaki.gr → Vercel)
+
+### Στο Vercel
+1. Project Settings → **Domains** → Add
+2. Πληκτρολογήστε `dmaccounting.gr`
+3. Επαναλάβετε για `www.dmaccounting.gr`
+4. Σημειώστε τα DNS records που σας δίνει (συνήθως):
+   - `dmaccounting.gr` → **A** record → `76.76.21.21`
+   - `www.dmaccounting.gr` → **CNAME** → `cname.vercel-dns.com`
+
+### Στο papaki.gr
+1. Login → Τα Domain μου → **dmaccounting.gr** → DNS Records
+2. Διαγράψτε ΟΛΑ τα παλιά A records
+3. Προσθέστε:
+   - Type `A`, Host `@`, Value `76.76.21.21`
+   - Type `CNAME`, Host `www`, Value `cname.vercel-dns.com`
+4. Save → ~30 λεπτά propagation
+
+## ΒΗΜΑ 7 — Επιστροφή στο Fly.io για ενημέρωση CORS
+Μόλις το domain ενεργοποιηθεί:
+```bash
+flyctl secrets set \
+  FRONTEND_URL="https://dmaccounting.gr" \
+  CORS_ORIGINS="https://dmaccounting.gr,https://www.dmaccounting.gr,https://dm-accounting.vercel.app"
+```
+
+## ΒΗΜΑ 8 — Πρώτη χρήση
+1. Πηγαίνετε στο `https://dmaccounting.gr`
+2. Login: `marinosgr@yahoo.gr` + το `ADMIN_PASSWORD` που βάλατε
+3. **Διαγράψτε** τον demo client `client@dmaccounting.gr` από το admin panel
+4. Δημιουργήστε τους πραγματικούς πελάτες
+
+---
+
+## 🔒 Ασφάλεια Production
+
+✅ HTTPS αυτόματα (Vercel & Fly.io)
+✅ Bcrypt passwords + JWT + httpOnly cookies
+✅ Client data isolation με JWT subject filtering
+✅ Audit logs σε όλες τις admin ενέργειες
+
+**Μετά το deploy, κάντε:**
+- MongoDB Atlas → Network Access → περιορίστε στα Fly.io IPs ([λίστα](https://fly.io/docs/reference/network-services/))
+- Ενεργοποιήστε 2FA σε όλους τους λογαριασμούς
+
+## 💾 Backup MongoDB
+
+**Εγκατάσταση mongodump:**
+- Mac: `brew install mongodb-database-tools`
+- Win/Linux: https://www.mongodb.com/try/download/database-tools
+
+**Backup:**
+```bash
+mongodump --uri="mongodb+srv://USER:PASS@cluster.xxx.mongodb.net/dm_accounting" --out=./backup-$(date +%F)
+```
+
+**Restore:**
+```bash
+mongorestore --uri="mongodb+srv://..." ./backup-2026-06-13
+```
+
+**MongoDB Compass** (γραφικός browser της βάσης — δωρεάν):
+https://www.mongodb.com/products/compass
+
+## 🔧 Συντήρηση
 
 ### Update κώδικα
-- Κάντε commit στο GitHub → push
-- Render και Vercel αυτόματα κάνουν redeploy
+- Frontend: commit & push στο GitHub → Vercel auto-deploy
+- Backend: `flyctl deploy` από τοπικά
 
 ### Logs
-- **Render**: Dashboard → Service → Logs (real-time)
-- **Vercel**: Dashboard → Project → Logs / Functions
+- Backend: `flyctl logs`
+- Frontend: Vercel Dashboard → Project → Logs
 
-### Παρακολούθηση
-- Render Health Checks → ενεργοποιημένα by default
+### Monitoring
+- Fly.io: `flyctl status`
 - UptimeRobot.com → δωρεάν εξωτερικό monitoring
 
 ---
 
-## Συνολικό Κόστος Παραγωγής
-- Domain `.gr`: ~10€/έτος
-- Render Starter: $7/μήνα (~7€)
-- MongoDB Atlas M0: δωρεάν
-- Vercel Hobby: δωρεάν
-- **Σύνολο: ~84€/έτος**
+## ⚠️ Όρια Free Tier
 
-## Επιπλέον Tips Ασφαλείας
-1. Αλλάξτε `ADMIN_PASSWORD` στο πρώτο login
-2. Διαγράψτε τον demo client `client@dmaccounting.gr`
-3. Στο MongoDB Atlas περιορίστε IP access ΜΟΝΟ στα Render IPs (όχι 0.0.0.0/0) — μετά το deploy
-4. Ενεργοποιήστε 2FA στους λογαριασμούς Vercel/Render/Atlas/GitHub/papaki
+| Πάροχος | Όριο | Τι σημαίνει για εσάς |
+|---|---|---|
+| **Fly.io** | 3 shared VMs (256MB→512MB), 3GB disk, 160GB bandwidth/μήνα | Αρκεί άνετα για 50–100 πελάτες |
+| **MongoDB Atlas M0** | 512MB | ~500.000 records — πολλά χρόνια δεδομένων |
+| **Vercel Hobby** | 100GB bandwidth/μήνα | Αρκεί για χιλιάδες επισκέπτες |
+
+**Αν ξεπεράσετε όρια:**
+- Fly.io: $0.15/GB extra storage, ή upgrade σε $5/μήνα
+- Atlas: upgrade σε M2 ($9/μήνα) για 2GB
+- Vercel: Pro ($20/μήνα) — απίθανο να χρειαστείτε
+
+## 💰 Συνολικό Κόστος = 10€/έτος (μόνο domain) 🎉

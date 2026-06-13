@@ -1,0 +1,38 @@
+# DM Accounting — Fly.io configuration
+# Δωρεάν tier: 3 shared VMs, 3GB persistent volume
+
+app = "dm-accounting"
+primary_region = "fra"  # Frankfurt — κοντά στην Ελλάδα
+
+[build]
+  dockerfile = "backend/Dockerfile"
+  build-target = ""
+
+[env]
+  PORT = "8080"
+  DB_NAME = "dm_accounting"
+  CLIENTS_DATA_DIR = "/data/clients-data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false   # μην κοιμίζεις τη μηχανή (δωρεάν επιτρέπει 3 πάντα ζωντανές)
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/"
+
+[[mounts]]
+  source = "dm_data"
+  destination = "/data"
+  initial_size = "1gb"   # Δωρεάν μέχρι 3GB
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512        # Δωρεάν tier
