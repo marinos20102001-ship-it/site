@@ -44,11 +44,9 @@ export default function ClientDashboard() {
 
   const t = data.totals || {};
   const monthly = data.monthly || [];
-  const vatData = monthly.map((m) => ({ month: m.month, ΦΠΑ: m.vat })).filter((x) => x.ΦΠΑ);
   const pie = [
     { name: "Έσοδα", value: t.income || 0 },
     { name: "Έξοδα", value: t.expense || 0 },
-    { name: "ΦΠΑ", value: t.vat || 0 },
     { name: "Οφειλές", value: t.obligations || 0 },
   ].filter((p) => p.value > 0);
 
@@ -86,7 +84,7 @@ export default function ClientDashboard() {
                 <div>
                   <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200 font-semibold">— Απλογραφικά Βιβλία</div>
                   <div className="font-serif-display text-xl md:text-2xl mt-1">Ισοζύγιο Λογαριασμών</div>
-                  <div className="text-xs text-blue-200 mt-1">Πάγια · Αγορές · ΦΠΑ · Έξοδα · Έσοδα</div>
+                  <div className="text-xs text-blue-200 mt-1">Πάγια · Αγορές · Έξοδα · Έσοδα</div>
                 </div>
               </div>
               <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
@@ -150,7 +148,7 @@ export default function ClientDashboard() {
         </div>
 
         {/* Charts row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+        <div className="grid grid-cols-1 gap-6 mt-6">
           <div className="bg-white border border-slate-200 p-6">
             <h3 className="font-serif-display text-xl text-slate-900 mb-6">Τάση Κερδών</h3>
             <ResponsiveContainer width="100%" height={260}>
@@ -162,23 +160,6 @@ export default function ClientDashboard() {
                 <Line type="monotone" dataKey="profit" name="Κέρδος" stroke="#1E3A8A" strokeWidth={2.5} dot={{ r: 4, fill: "#1E3A8A" }} />
               </LineChart>
             </ResponsiveContainer>
-          </div>
-
-          <div className="bg-white border border-slate-200 p-6">
-            <h3 className="font-serif-display text-xl text-slate-900 mb-6">Ανάλυση ΦΠΑ</h3>
-            {vatData.length === 0 ? (
-              <div className="text-sm text-slate-400 text-center py-20">Δεν υπάρχουν δεδομένα ΦΠΑ.</div>
-            ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={vatData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                  <XAxis dataKey="month" stroke="#94A3B8" fontSize={11} />
-                  <YAxis stroke="#94A3B8" fontSize={11} />
-                  <Tooltip contentStyle={{ border: "1px solid #E2E8F0", borderRadius: 0, fontSize: 12 }} formatter={(v) => fmt(v)} />
-                  <Bar dataKey="ΦΠΑ" fill="#1E3A8A" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
           </div>
         </div>
 

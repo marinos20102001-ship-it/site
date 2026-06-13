@@ -3,7 +3,7 @@ import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { BookOpen, Calendar, FileSpreadsheet, ArrowLeft, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Cell, Legend, LineChart, Line } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend } from "recharts";
 
 const fmt = (n) =>
   new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n || 0);
@@ -11,9 +11,15 @@ const fmt = (n) =>
 const GROUP_COLORS = {
   "1": "#1E3A8A",
   "2": "#3B82F6",
-  "54": "#94A3B8",
   "6": "#64748B",
   "7": "#0F172A",
+};
+
+const GROUP_LABELS_SHORT = {
+  "1": "Πάγια",
+  "2": "Αγορές",
+  "6": "Έξοδα",
+  "7": "Έσοδα",
 };
 
 function formatAsOf(iso) {
@@ -36,6 +42,12 @@ function fmtDateTime(iso) {
   }
 }
 
+function fmtCell(v) {
+  if (!v) return <span className="text-slate-300">—</span>;
+  if (v < 0) return <span className="text-red-600">{fmt(v)}</span>;
+  return <span>{fmt(v)}</span>;
+}
+
 export default function SimpleBooks() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
@@ -48,16 +60,14 @@ export default function SimpleBooks() {
   }, []);
 
   const chartData = useMemo(() => {
-    if (!data?.groups) return [];
-    return data.groups
-      .filter((g) => g.rows.length > 0)
-      .map((g) => ({
-        name: g.label.split(" — ")[0],
-        key: g.key,
-        Χρέωση: g.total_debit,
-        Πίστωση: g.total_credit,
-        Υπόλοιπο: g.total_balance,
-      }));
+    if (!data?.monthly_summary) return [];
+    return data.monthly_summary.map((m) => ({
+      name: m.month_name.substring(0, 3),
+      Πάγια: m["1"] || 0,
+      Αγορές: m["2"] || 0,
+      Έξοδα: m["6"] || 0,
+      Έσοδα: m["7"] || 0,
+    }));
   }, [data]);
 
   if (err) return <div className="p-12 text-red-600" data-testid="books-error">{err}</div>;
@@ -98,9 +108,7 @@ export default function SimpleBooks() {
   }
 
   const groupsWithData = data.groups.filter((g) => g.rows.length > 0);
-  const totalDebit = groupsWithData.reduce((s, g) => s + g.total_debit, 0);
-  const totalCredit = groupsWithData.reduce((s, g) => s + g.total_credit, 0);
-  const totalBalance = groupsWithData.reduce((s, g) => s + g.total_balance, 0);
+  const months = data.months || [];
 
   return (
     <div data-testid="simple-books-page" className="bg-[#F5F5F5] min-h-screen">
@@ -124,66 +132,51 @@ export default function SimpleBooks() {
           </div>
         </div>
 
-        {/* Totals row — cumulative */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-slate-200 mb-8">
-          <div className="bg-white p-6">
-            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Σύνολο Χρέωσης</div>
-            <div className="mt-2 font-serif-display text-3xl text-[#1E3A8A]" data-testid="total-debit">{fmt(totalDebit)}</div>
-            <div className="text-[11px] text-slate-500 mt-1">Σωρευτικά Ιαν — {data.last_month_name}</div>
-          </div>
-          <div className="bg-white p-6">
-            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Σύνολο Πίστωσης</div>
-            <div className="mt-2 font-serif-display text-3xl text-slate-700" data-testid="total-credit">{fmt(totalCredit)}</div>
-            <div className="text-[11px] text-slate-500 mt-1">Σωρευτικά Ιαν — {data.last_month_name}</div>
-          </div>
-          <div className="bg-white p-6 col-span-2 md:col-span-1">
-            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Σύνολο Υπολοίπου</div>
-            <div className={`mt-2 font-serif-display text-3xl ${totalBalance < 0 ? "text-red-600" : "text-slate-900"}`} data-testid="total-balance">{fmt(totalBalance)}</div>
-            <div className="text-[11px] text-slate-500 mt-1">Καθαρό υπόλοιπο</div>
-          </div>
+        {/* Group totals strip */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 mb-8">
+          {["1", "2", "6", "7"].map((key) => {
+            const g = data.groups.find((x) => x.key === key);
+            const total = g?.total_balance || 0;
+            return (
+              <div key={key} className="bg-white p-5" data-testid={`group-total-${key}`}>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-5" style={{ background: GROUP_COLORS[key] }} />
+                  <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">
+                    Ομάδα {key} · {GROUP_LABELS_SHORT[key]}
+                  </div>
+                </div>
+                <div className={`mt-3 font-serif-display text-2xl ${total < 0 ? "text-red-600" : "text-slate-900"}`}>
+                  {fmt(total)}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">Σύνολο υπολοίπου έως {data.last_month_name}</div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Trend chart */}
-        {data.monthly_trend && data.monthly_trend.length > 0 && (
-          <div className="bg-white border border-slate-200 p-6 mb-6">
-            <h3 className="font-serif-display text-xl text-slate-900 mb-6">Πορεία Κινήσεων ανά Μήνα — {data.year}</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={data.monthly_trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                <XAxis dataKey="month_name" stroke="#94A3B8" fontSize={11} />
-                <YAxis stroke="#94A3B8" fontSize={11} />
-                <Tooltip contentStyle={{ border: "1px solid #E2E8F0", borderRadius: 0, fontSize: 12 }} formatter={(v) => fmt(v)} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line type="monotone" dataKey="debit" name="Χρέωση" stroke="#1E3A8A" strokeWidth={2.5} dot={{ r: 4, fill: "#1E3A8A" }} />
-                <Line type="monotone" dataKey="credit" name="Πίστωση" stroke="#94A3B8" strokeWidth={2.5} dot={{ r: 4, fill: "#94A3B8" }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* Per-category chart */}
+        {/* Bar chart by month */}
         <div className="bg-white border border-slate-200 p-6 mb-8">
-          <h3 className="font-serif-display text-xl text-slate-900 mb-6">Ανά Κατηγορία — Σωρευτικά</h3>
+          <h3 className="font-serif-display text-xl text-slate-900 mb-6">Υπόλοιπα ανά Μήνα · {data.year}</h3>
           {chartData.length === 0 ? (
             <div className="text-sm text-slate-400 text-center py-12">Δεν υπάρχουν κινήσεις.</div>
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                <XAxis dataKey="name" stroke="#94A3B8" fontSize={11} interval={0} />
+                <XAxis dataKey="name" stroke="#94A3B8" fontSize={11} />
                 <YAxis stroke="#94A3B8" fontSize={11} />
                 <Tooltip contentStyle={{ border: "1px solid #E2E8F0", borderRadius: 0, fontSize: 12 }} formatter={(v) => fmt(v)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Χρέωση" fill="#1E3A8A">
-                  {chartData.map((d, i) => <Cell key={i} fill={GROUP_COLORS[d.key] || "#1E3A8A"} />)}
-                </Bar>
-                <Bar dataKey="Πίστωση" fill="#94A3B8" />
+                <Bar dataKey="Πάγια" fill={GROUP_COLORS["1"]} />
+                <Bar dataKey="Αγορές" fill={GROUP_COLORS["2"]} />
+                <Bar dataKey="Έξοδα" fill={GROUP_COLORS["6"]} />
+                <Bar dataKey="Έσοδα" fill={GROUP_COLORS["7"]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        {/* Groups */}
+        {/* Groups - each with per-month balance table */}
         <div className="space-y-6">
           {groupsWithData.length === 0 ? (
             <div className="bg-white border border-slate-200 p-10 text-center text-slate-500 text-sm">
@@ -200,36 +193,49 @@ export default function SimpleBooks() {
                   </div>
                 </div>
                 <div className="text-right text-xs">
-                  <div className="text-slate-500">Υπόλοιπο</div>
+                  <div className="text-slate-500">Σύνολο Υπολοίπου</div>
                   <div className={`font-semibold mt-0.5 ${g.total_balance < 0 ? "text-red-600" : "text-[#1E3A8A]"}`}>{fmt(g.total_balance)}</div>
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm" data-testid={`group-table-${g.key}`}>
                   <thead className="bg-[#F5F5F5] text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold">
                     <tr>
-                      <th className="text-left p-4 w-32">Λογαριασμός</th>
-                      <th className="text-left p-4">Περιγραφή</th>
-                      <th className="text-right p-4">Σύνολο Χρέωσης</th>
-                      <th className="text-right p-4">Σύνολο Πίστωσης</th>
-                      <th className="text-right p-4">Υπόλοιπο</th>
+                      <th className="text-left p-3 w-24 sticky left-0 bg-[#F5F5F5] z-10">Λογ/σμός</th>
+                      <th className="text-left p-3 min-w-[200px] sticky left-24 bg-[#F5F5F5] z-10">Περιγραφή</th>
+                      {months.map((m) => (
+                        <th key={m.index} className="text-right p-3 whitespace-nowrap min-w-[110px]">
+                          Υπόλ. {m.name.substring(0, 3)}
+                        </th>
+                      ))}
+                      <th className="text-right p-3 whitespace-nowrap bg-[#1E3A8A]/5 min-w-[130px]">Σύνολο Υπολοίπου</th>
                     </tr>
                   </thead>
                   <tbody>
                     {g.rows.map((r, i) => (
-                      <tr key={i} className="border-t border-slate-100">
-                        <td className="p-4 font-mono text-slate-900 font-semibold">{r.code}</td>
-                        <td className="p-4 text-slate-600">{r.description}</td>
-                        <td className="p-4 text-right text-[#1E3A8A] font-semibold">{r.debit ? fmt(r.debit) : "—"}</td>
-                        <td className="p-4 text-right text-slate-700 font-semibold">{r.credit ? fmt(r.credit) : "—"}</td>
-                        <td className={`p-4 text-right font-semibold ${r.balance < 0 ? "text-red-600" : "text-slate-900"}`}>{fmt(r.balance)}</td>
+                      <tr key={i} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 font-mono text-slate-900 font-semibold sticky left-0 bg-white">{r.code}</td>
+                        <td className="p-3 text-slate-600 sticky left-24 bg-white">{r.description}</td>
+                        {months.map((m) => (
+                          <td key={m.index} className="p-3 text-right text-slate-700">
+                            {fmtCell(r.monthly_balance[m.index])}
+                          </td>
+                        ))}
+                        <td className={`p-3 text-right font-semibold bg-[#1E3A8A]/5 ${r.total_balance < 0 ? "text-red-600" : "text-[#1E3A8A]"}`}>
+                          {fmt(r.total_balance)}
+                        </td>
                       </tr>
                     ))}
                     <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
-                      <td className="p-4" colSpan="2">Σύνολο Ομάδας</td>
-                      <td className="p-4 text-right text-[#1E3A8A]">{fmt(g.total_debit)}</td>
-                      <td className="p-4 text-right text-slate-700">{fmt(g.total_credit)}</td>
-                      <td className={`p-4 text-right ${g.total_balance < 0 ? "text-red-600" : "text-slate-900"}`}>{fmt(g.total_balance)}</td>
+                      <td className="p-3 sticky left-0 bg-slate-50" colSpan="2">Σύνολο Ομάδας</td>
+                      {months.map((m) => (
+                        <td key={m.index} className="p-3 text-right text-slate-900">
+                          {fmtCell(g.monthly_balance[m.index])}
+                        </td>
+                      ))}
+                      <td className={`p-3 text-right ${g.total_balance < 0 ? "text-red-600" : "text-[#1E3A8A]"}`}>
+                        {fmt(g.total_balance)}
+                      </td>
                     </tr>
                   </tbody>
                 </table>

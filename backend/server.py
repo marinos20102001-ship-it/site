@@ -341,19 +341,10 @@ def scan_client_folder(client_id: str) -> Dict[str, Any]:
                     if credit:
                         records.append({"date": date_str, "type": "income", "amount": credit,
                                         "description": f"{acc['code']} {acc['description']}"})
-                elif cat in ("6", "2"):  # expense: 6=έξοδα, 2=αγορές/εμπορεύματα (also expense)
+                elif cat in ("6", "2"):  # expense: 6=έξοδα, 2=αγορές
                     if debit:
                         records.append({"date": date_str, "type": "expense", "amount": debit,
                                         "description": f"{acc['code']} {acc['description']}"})
-                elif cat == "54":
-                    # VAT obligation = credit (output VAT); VAT input = debit (deductible)
-                    net = credit - debit  # positive = payable
-                    if net > 0:
-                        records.append({"date": date_str, "type": "vat", "amount": net,
-                                        "description": f"{acc['code']} {acc['description']}"})
-                    elif net < 0:
-                        records.append({"date": date_str, "type": "vat", "amount": abs(net),
-                                        "description": f"{acc['code']} {acc['description']} (πιστωτικό)"})
 
     agg = aggregate_records(records)
     agg["files"] = files_info
@@ -374,8 +365,7 @@ GREEK_MONTHS_GEN = [  # genitive forms sometimes found in headers
 
 CATEGORY_LABELS = {
     "1": "Πάγια",
-    "2": "Αγορές (Εμπορεύματα / Πρώτες Ύλες) — Έξοδο",
-    "54": "ΦΠΑ",
+    "2": "Αγορές (Έξοδο)",
     "6": "Έξοδα",
     "7": "Έσοδα",
 }
@@ -388,9 +378,8 @@ def _is_primary_code(code: str) -> bool:
 
 
 def _category_for(code: str) -> Optional[str]:
+    """Return category key for primary code. Excludes 54 (ΦΠΑ) per user request."""
     c = str(code or "").strip()
-    if c == "54":
-        return "54"
     if not c:
         return None
     first = c[0]
@@ -570,7 +559,7 @@ def _last_day_of(year: int, month: int) -> int:
 
 
 def build_simple_books(client_id: str) -> Dict[str, Any]:
-    """Build display data for απλογραφικά using cumulative totals from the trial balance."""
+    """Build display data for απλογραφικά: monthly balances per account up to last month with data."""
     tb = latest_trial_balance(client_id)
     today = datetime.now(timezone.utc)
     if not tb:
@@ -580,66 +569,67 @@ def build_simple_books(client_id: str) -> Dict[str, Any]:
             "year": today.year,
         }
 
-    # find the latest month that has any data
+    # find the latest month that has any data (debit or credit) across all primary accounts
     months_with_data = set()
     for acc in tb["accounts"]:
         for m_idx, vals in acc["monthly"].items():
-            if vals["debit"] or vals["credit"]:
+            if (vals.get("debit") or 0) or (vals.get("credit") or 0):
                 months_with_data.add(m_idx)
 
     year = tb.get("year") or today.year
-    if months_with_data:
-        last_month = max(months_with_data)
-    else:
-        last_month = 1
+    last_month = max(months_with_data) if months_with_data else 1
     as_of_date = f"{year:04d}-{last_month:02d}-{_last_day_of(year, last_month):02d}"
 
-    # Build category groups using CUMULATIVE totals from the excel
+    # Months to display = 1..last_month
+    months_list = [{"index": m, "name": GREEK_MONTHS[m - 1]} for m in range(1, last_month + 1)]
+
+    # Build category groups (excluding 54 — ΦΠΑ removed per user request)
     groups: Dict[str, Dict[str, Any]] = {}
     for cat_key, cat_label in CATEGORY_LABELS.items():
-        groups[cat_key] = {"key": cat_key, "label": cat_label, "rows": [],
-                           "total_debit": 0.0, "total_credit": 0.0, "total_balance": 0.0}
+        groups[cat_key] = {
+            "key": cat_key,
+            "label": cat_label,
+            "rows": [],
+            "monthly_balance": {m: 0.0 for m in range(1, last_month + 1)},
+            "total_balance": 0.0,
+        }
 
     for acc in tb["accounts"]:
-        # Only include accounts that have any movement up to last_month
+        cat = acc["category"]
+        if cat not in groups:
+            continue
+        # Only include accounts that had any movement up to last_month
         had_movement = any(
             (acc["monthly"].get(m, {}).get("debit") or 0) or (acc["monthly"].get(m, {}).get("credit") or 0)
             for m in range(1, last_month + 1)
         )
         if not had_movement:
             continue
-        g = groups[acc["category"]]
-        g["rows"].append({
+        row_monthly = {}
+        for m in range(1, last_month + 1):
+            bal = acc["monthly"].get(m, {}).get("balance") or 0.0
+            row_monthly[m] = round(bal, 2)
+            groups[cat]["monthly_balance"][m] += bal
+        groups[cat]["rows"].append({
             "code": acc["code"],
             "description": acc["description"],
-            "debit": acc["total_debit"],
-            "credit": acc["total_credit"],
-            "balance": acc["total_balance"],
+            "monthly_balance": row_monthly,
+            "total_balance": acc["total_balance"],
         })
-        g["total_debit"] += acc["total_debit"]
-        g["total_credit"] += acc["total_credit"]
-        g["total_balance"] += acc["total_balance"]
+        groups[cat]["total_balance"] += acc["total_balance"]
 
+    # Round group totals
     for g in groups.values():
-        g["total_debit"] = round(g["total_debit"], 2)
-        g["total_credit"] = round(g["total_credit"], 2)
         g["total_balance"] = round(g["total_balance"], 2)
+        g["monthly_balance"] = {m: round(v, 2) for m, v in g["monthly_balance"].items()}
 
-    # Monthly trend (cumulative debit/credit per month for chart)
-    monthly_trend = []
-    for m_idx in sorted(months_with_data):
-        debit_m = 0.0
-        credit_m = 0.0
-        for acc in tb["accounts"]:
-            vals = acc["monthly"].get(m_idx, {})
-            debit_m += vals.get("debit") or 0.0
-            credit_m += vals.get("credit") or 0.0
-        monthly_trend.append({
-            "month": m_idx,
-            "month_name": GREEK_MONTHS[m_idx - 1],
-            "debit": round(debit_m, 2),
-            "credit": round(credit_m, 2),
-        })
+    # Top-level monthly summary (per group key per month) for chart
+    monthly_summary = []
+    for m in range(1, last_month + 1):
+        entry = {"month": m, "month_name": GREEK_MONTHS[m - 1]}
+        for cat_key in CATEGORY_LABELS:
+            entry[cat_key] = groups[cat_key]["monthly_balance"][m]
+        monthly_summary.append(entry)
 
     return {
         "has_data": True,
@@ -649,8 +639,9 @@ def build_simple_books(client_id: str) -> Dict[str, Any]:
         "last_month": last_month,
         "last_month_name": GREEK_MONTHS[last_month - 1],
         "as_of": as_of_date,
+        "months": months_list,
         "groups": list(groups.values()),
-        "monthly_trend": monthly_trend,
+        "monthly_summary": monthly_summary,
     }
 
 
