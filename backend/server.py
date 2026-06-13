@@ -341,7 +341,7 @@ def scan_client_folder(client_id: str) -> Dict[str, Any]:
                     if credit:
                         records.append({"date": date_str, "type": "income", "amount": credit,
                                         "description": f"{acc['code']} {acc['description']}"})
-                elif cat == "6":  # expense - debit side
+                elif cat in ("6", "2"):  # expense: 6=έξοδα, 2=αγορές/εμπορεύματα (also expense)
                     if debit:
                         records.append({"date": date_str, "type": "expense", "amount": debit,
                                         "description": f"{acc['code']} {acc['description']}"})
@@ -374,7 +374,7 @@ GREEK_MONTHS_GEN = [  # genitive forms sometimes found in headers
 
 CATEGORY_LABELS = {
     "1": "Πάγια",
-    "2": "Αγορές / Εμπορεύματα / Πρώτες Ύλες",
+    "2": "Αγορές (Εμπορεύματα / Πρώτες Ύλες) — Έξοδο",
     "54": "ΦΠΑ",
     "6": "Έξοδα",
     "7": "Έσοδα",
@@ -428,6 +428,24 @@ def _detect_month_columns(headers: List[str]) -> Dict[int, Dict[str, int]]:
     return mapping
 
 
+def _detect_total_columns(headers: List[str]) -> Dict[str, int]:
+    """Find 'Σύνολο Χρέωσης', 'Σύνολο Πίστωσης', 'Σύνολο Υπολοίπου' columns."""
+    out: Dict[str, int] = {}
+    for idx, h in enumerate(headers):
+        if not h:
+            continue
+        h_lower = str(h).lower()
+        if "σύνολο" not in h_lower and "συνολο" not in h_lower:
+            continue
+        if "χρέωση" in h_lower or "χρεωση" in h_lower:
+            out["debit"] = idx
+        elif "πίστωση" in h_lower or "πιστωση" in h_lower:
+            out["credit"] = idx
+        elif "υπόλοιπο" in h_lower or "υπολοιπο" in h_lower:
+            out["balance"] = idx
+    return out
+
+
 def _read_workbook_rows(path: Path) -> Optional[List[List[Any]]]:
     """Return list of rows (each a list of cell values). Supports .xlsx and .xls."""
     ext = path.suffix.lower()
@@ -458,6 +476,7 @@ def parse_trial_balance(path: Path) -> Optional[Dict[str, Any]]:
     month_cols = _detect_month_columns(headers)
     if not month_cols:
         return None
+    total_cols = _detect_total_columns(headers)
 
     # detect year from headers
     year = None
@@ -483,13 +502,32 @@ def parse_trial_balance(path: Path) -> Optional[Dict[str, Any]]:
         for m_idx, cols in month_cols.items():
             debit = parse_amount(r[cols["debit"]]) if "debit" in cols and cols["debit"] < len(r) else None
             credit = parse_amount(r[cols["credit"]]) if "credit" in cols and cols["credit"] < len(r) else None
-            monthly[m_idx] = {"debit": debit or 0.0, "credit": credit or 0.0}
+            balance = parse_amount(r[cols["balance"]]) if "balance" in cols and cols["balance"] < len(r) else None
+            monthly[m_idx] = {"debit": debit or 0.0, "credit": credit or 0.0, "balance": balance or 0.0}
+
+        # Total columns (prefer explicit; else compute from monthly)
+        if total_cols:
+            t_debit = parse_amount(r[total_cols["debit"]]) if "debit" in total_cols and total_cols["debit"] < len(r) else None
+            t_credit = parse_amount(r[total_cols["credit"]]) if "credit" in total_cols and total_cols["credit"] < len(r) else None
+            t_balance = parse_amount(r[total_cols["balance"]]) if "balance" in total_cols and total_cols["balance"] < len(r) else None
+        else:
+            t_debit = t_credit = t_balance = None
+        if t_debit is None:
+            t_debit = sum(v["debit"] for v in monthly.values())
+        if t_credit is None:
+            t_credit = sum(v["credit"] for v in monthly.values())
+        if t_balance is None:
+            t_balance = t_debit - t_credit
+
         accounts.append({
             "code": code,
             "description": desc,
             "category": category,
             "category_label": CATEGORY_LABELS.get(category, category),
             "monthly": monthly,
+            "total_debit": round(t_debit, 2),
+            "total_credit": round(t_credit, 2),
+            "total_balance": round(t_balance, 2),
         })
 
     return {
@@ -521,73 +559,98 @@ def latest_trial_balance(client_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def build_simple_books(client_id: str) -> Dict[str, Any]:
-    """Build display data for απλογραφικά: target month = current_month - 3."""
-    today = datetime.now(timezone.utc)
-    # target month = current - 3 (e.g. June -> March)
-    target_month = today.month - 3
-    target_year = today.year
-    while target_month <= 0:
-        target_month += 12
-        target_year -= 1
+DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
+
+def _last_day_of(year: int, month: int) -> int:
+    if month == 2:
+        # leap year check
+        return 29 if (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 28
+    return DAYS_IN_MONTH[month - 1]
+
+
+def build_simple_books(client_id: str) -> Dict[str, Any]:
+    """Build display data for απλογραφικά using cumulative totals from the trial balance."""
     tb = latest_trial_balance(client_id)
+    today = datetime.now(timezone.utc)
     if not tb:
         return {
             "has_data": False,
-            "target_month": target_month,
-            "target_year": target_year,
-            "target_month_name": GREEK_MONTHS[target_month - 1],
+            "as_of": None,
+            "year": today.year,
         }
 
-    # If target month has no data, fall back to the latest month with data
+    # find the latest month that has any data
     months_with_data = set()
     for acc in tb["accounts"]:
         for m_idx, vals in acc["monthly"].items():
             if vals["debit"] or vals["credit"]:
                 months_with_data.add(m_idx)
 
-    display_month = target_month
-    fallback_used = False
-    if target_month not in months_with_data and months_with_data:
-        display_month = max(months_with_data)
-        fallback_used = True
+    year = tb.get("year") or today.year
+    if months_with_data:
+        last_month = max(months_with_data)
+    else:
+        last_month = 1
+    as_of_date = f"{year:04d}-{last_month:02d}-{_last_day_of(year, last_month):02d}"
 
-    # build category groups for display month
+    # Build category groups using CUMULATIVE totals from the excel
     groups: Dict[str, Dict[str, Any]] = {}
     for cat_key, cat_label in CATEGORY_LABELS.items():
-        groups[cat_key] = {"key": cat_key, "label": cat_label, "rows": [], "total_debit": 0.0, "total_credit": 0.0}
+        groups[cat_key] = {"key": cat_key, "label": cat_label, "rows": [],
+                           "total_debit": 0.0, "total_credit": 0.0, "total_balance": 0.0}
 
     for acc in tb["accounts"]:
-        vals = acc["monthly"].get(display_month, {"debit": 0.0, "credit": 0.0})
-        if vals["debit"] == 0 and vals["credit"] == 0:
+        # Only include accounts that have any movement up to last_month
+        had_movement = any(
+            (acc["monthly"].get(m, {}).get("debit") or 0) or (acc["monthly"].get(m, {}).get("credit") or 0)
+            for m in range(1, last_month + 1)
+        )
+        if not had_movement:
             continue
         g = groups[acc["category"]]
         g["rows"].append({
             "code": acc["code"],
             "description": acc["description"],
-            "debit": round(vals["debit"], 2),
-            "credit": round(vals["credit"], 2),
+            "debit": acc["total_debit"],
+            "credit": acc["total_credit"],
+            "balance": acc["total_balance"],
         })
-        g["total_debit"] += vals["debit"]
-        g["total_credit"] += vals["credit"]
+        g["total_debit"] += acc["total_debit"]
+        g["total_credit"] += acc["total_credit"]
+        g["total_balance"] += acc["total_balance"]
 
     for g in groups.values():
         g["total_debit"] = round(g["total_debit"], 2)
         g["total_credit"] = round(g["total_credit"], 2)
+        g["total_balance"] = round(g["total_balance"], 2)
+
+    # Monthly trend (cumulative debit/credit per month for chart)
+    monthly_trend = []
+    for m_idx in sorted(months_with_data):
+        debit_m = 0.0
+        credit_m = 0.0
+        for acc in tb["accounts"]:
+            vals = acc["monthly"].get(m_idx, {})
+            debit_m += vals.get("debit") or 0.0
+            credit_m += vals.get("credit") or 0.0
+        monthly_trend.append({
+            "month": m_idx,
+            "month_name": GREEK_MONTHS[m_idx - 1],
+            "debit": round(debit_m, 2),
+            "credit": round(credit_m, 2),
+        })
 
     return {
         "has_data": True,
-        "year": tb.get("year") or display_month and target_year,
+        "year": year,
         "source_file": tb["source_file"],
         "uploaded_at": tb["uploaded_at"],
-        "target_month": target_month,
-        "target_year": target_year,
-        "target_month_name": GREEK_MONTHS[target_month - 1],
-        "display_month": display_month,
-        "display_month_name": GREEK_MONTHS[display_month - 1],
-        "fallback_used": fallback_used,
+        "last_month": last_month,
+        "last_month_name": GREEK_MONTHS[last_month - 1],
+        "as_of": as_of_date,
         "groups": list(groups.values()),
+        "monthly_trend": monthly_trend,
     }
 
 

@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { BookOpen, Calendar, FileSpreadsheet, ArrowLeft, AlertCircle, Clock } from "lucide-react";
+import { BookOpen, Calendar, FileSpreadsheet, ArrowLeft, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Cell, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Cell, Legend, LineChart, Line } from "recharts";
 
 const fmt = (n) =>
   new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n || 0);
@@ -15,6 +15,26 @@ const GROUP_COLORS = {
   "6": "#64748B",
   "7": "#0F172A",
 };
+
+function formatAsOf(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("el-GR", { day: "2-digit", month: "long", year: "numeric" });
+  } catch {
+    return iso;
+  }
+}
+
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
+}
 
 export default function SimpleBooks() {
   const { user } = useAuth();
@@ -32,10 +52,11 @@ export default function SimpleBooks() {
     return data.groups
       .filter((g) => g.rows.length > 0)
       .map((g) => ({
-        name: g.label,
+        name: g.label.split(" — ")[0],
         key: g.key,
         Χρέωση: g.total_debit,
         Πίστωση: g.total_credit,
+        Υπόλοιπο: g.total_balance,
       }));
   }, [data]);
 
@@ -70,9 +91,6 @@ export default function SimpleBooks() {
             <p className="text-slate-600 mt-2 text-sm">
               Δεν έχει ανέβει ακόμη ισοζύγιο. Παρακαλούμε επικοινωνήστε με το γραφείο μας.
             </p>
-            <div className="mt-4 text-xs text-slate-500">
-              Στόχος μήνας: {data.target_month_name} {data.target_year}
-            </div>
           </div>
         </div>
       </div>
@@ -82,6 +100,7 @@ export default function SimpleBooks() {
   const groupsWithData = data.groups.filter((g) => g.rows.length > 0);
   const totalDebit = groupsWithData.reduce((s, g) => s + g.total_debit, 0);
   const totalCredit = groupsWithData.reduce((s, g) => s + g.total_credit, 0);
+  const totalBalance = groupsWithData.reduce((s, g) => s + g.total_balance, 0);
 
   return (
     <div data-testid="simple-books-page" className="bg-[#F5F5F5] min-h-screen">
@@ -95,7 +114,7 @@ export default function SimpleBooks() {
           <div>
             <div className="text-[10px] uppercase tracking-[0.3em] text-[#1E3A8A] font-semibold">— Απλογραφικά Βιβλία</div>
             <h1 className="font-serif-display text-3xl md:text-4xl lg:text-5xl text-slate-900 mt-2">
-              Ισοζύγιο · {data.display_month_name} {data.year}
+              Ισοζύγιο έως {formatAsOf(data.as_of)}
             </h1>
             <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-600">
               <span className="flex items-center gap-1.5"><Calendar size={12} /> {user?.company || user?.name}</span>
@@ -105,42 +124,53 @@ export default function SimpleBooks() {
           </div>
         </div>
 
-        {data.fallback_used && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 mb-8 flex items-start gap-3 text-sm">
-            <AlertCircle size={16} className="mt-0.5 shrink-0" />
-            <div>
-              Δεν υπάρχουν ακόμη δεδομένα για {data.target_month_name} {data.target_year}.
-              Εμφανίζονται τα τελευταία διαθέσιμα ({data.display_month_name}).
-            </div>
-          </div>
-        )}
-
-        {/* Totals row */}
+        {/* Totals row — cumulative */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-px bg-slate-200 mb-8">
           <div className="bg-white p-6">
             <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Σύνολο Χρέωσης</div>
             <div className="mt-2 font-serif-display text-3xl text-[#1E3A8A]" data-testid="total-debit">{fmt(totalDebit)}</div>
+            <div className="text-[11px] text-slate-500 mt-1">Σωρευτικά Ιαν — {data.last_month_name}</div>
           </div>
           <div className="bg-white p-6">
             <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Σύνολο Πίστωσης</div>
             <div className="mt-2 font-serif-display text-3xl text-slate-700" data-testid="total-credit">{fmt(totalCredit)}</div>
+            <div className="text-[11px] text-slate-500 mt-1">Σωρευτικά Ιαν — {data.last_month_name}</div>
           </div>
           <div className="bg-white p-6 col-span-2 md:col-span-1">
-            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Καθαρό Υπόλοιπο</div>
-            <div className="mt-2 font-serif-display text-3xl text-slate-900" data-testid="total-balance">{fmt(totalDebit - totalCredit)}</div>
+            <div className="text-[10px] uppercase tracking-[0.25em] text-slate-500 font-semibold">Σύνολο Υπολοίπου</div>
+            <div className={`mt-2 font-serif-display text-3xl ${totalBalance < 0 ? "text-red-600" : "text-slate-900"}`} data-testid="total-balance">{fmt(totalBalance)}</div>
+            <div className="text-[11px] text-slate-500 mt-1">Καθαρό υπόλοιπο</div>
           </div>
         </div>
 
-        {/* Chart */}
+        {/* Trend chart */}
+        {data.monthly_trend && data.monthly_trend.length > 0 && (
+          <div className="bg-white border border-slate-200 p-6 mb-6">
+            <h3 className="font-serif-display text-xl text-slate-900 mb-6">Πορεία Κινήσεων ανά Μήνα — {data.year}</h3>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={data.monthly_trend}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                <XAxis dataKey="month_name" stroke="#94A3B8" fontSize={11} />
+                <YAxis stroke="#94A3B8" fontSize={11} />
+                <Tooltip contentStyle={{ border: "1px solid #E2E8F0", borderRadius: 0, fontSize: 12 }} formatter={(v) => fmt(v)} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="debit" name="Χρέωση" stroke="#1E3A8A" strokeWidth={2.5} dot={{ r: 4, fill: "#1E3A8A" }} />
+                <Line type="monotone" dataKey="credit" name="Πίστωση" stroke="#94A3B8" strokeWidth={2.5} dot={{ r: 4, fill: "#94A3B8" }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Per-category chart */}
         <div className="bg-white border border-slate-200 p-6 mb-8">
-          <h3 className="font-serif-display text-xl text-slate-900 mb-6">Ανά Κατηγορία — {data.display_month_name} {data.year}</h3>
+          <h3 className="font-serif-display text-xl text-slate-900 mb-6">Ανά Κατηγορία — Σωρευτικά</h3>
           {chartData.length === 0 ? (
             <div className="text-sm text-slate-400 text-center py-12">Δεν υπάρχουν κινήσεις.</div>
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                <XAxis dataKey="name" stroke="#94A3B8" fontSize={11} interval={0} angle={0} />
+                <XAxis dataKey="name" stroke="#94A3B8" fontSize={11} interval={0} />
                 <YAxis stroke="#94A3B8" fontSize={11} />
                 <Tooltip contentStyle={{ border: "1px solid #E2E8F0", borderRadius: 0, fontSize: 12 }} formatter={(v) => fmt(v)} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -157,7 +187,7 @@ export default function SimpleBooks() {
         <div className="space-y-6">
           {groupsWithData.length === 0 ? (
             <div className="bg-white border border-slate-200 p-10 text-center text-slate-500 text-sm">
-              Δεν υπάρχουν κινήσεις για {data.display_month_name}.
+              Δεν υπάρχουν κινήσεις.
             </div>
           ) : groupsWithData.map((g) => (
             <div key={g.key} className="bg-white border border-slate-200" data-testid={`group-${g.key}`}>
@@ -170,8 +200,8 @@ export default function SimpleBooks() {
                   </div>
                 </div>
                 <div className="text-right text-xs">
-                  <div className="text-slate-500">Σύνολο</div>
-                  <div className="font-semibold text-[#1E3A8A] mt-0.5">{fmt(g.total_debit - g.total_credit)}</div>
+                  <div className="text-slate-500">Υπόλοιπο</div>
+                  <div className={`font-semibold mt-0.5 ${g.total_balance < 0 ? "text-red-600" : "text-[#1E3A8A]"}`}>{fmt(g.total_balance)}</div>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -180,8 +210,9 @@ export default function SimpleBooks() {
                     <tr>
                       <th className="text-left p-4 w-32">Λογαριασμός</th>
                       <th className="text-left p-4">Περιγραφή</th>
-                      <th className="text-right p-4">Χρέωση</th>
-                      <th className="text-right p-4">Πίστωση</th>
+                      <th className="text-right p-4">Σύνολο Χρέωσης</th>
+                      <th className="text-right p-4">Σύνολο Πίστωσης</th>
+                      <th className="text-right p-4">Υπόλοιπο</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -191,12 +222,14 @@ export default function SimpleBooks() {
                         <td className="p-4 text-slate-600">{r.description}</td>
                         <td className="p-4 text-right text-[#1E3A8A] font-semibold">{r.debit ? fmt(r.debit) : "—"}</td>
                         <td className="p-4 text-right text-slate-700 font-semibold">{r.credit ? fmt(r.credit) : "—"}</td>
+                        <td className={`p-4 text-right font-semibold ${r.balance < 0 ? "text-red-600" : "text-slate-900"}`}>{fmt(r.balance)}</td>
                       </tr>
                     ))}
                     <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold">
-                      <td className="p-4" colSpan="2">Σύνολο</td>
+                      <td className="p-4" colSpan="2">Σύνολο Ομάδας</td>
                       <td className="p-4 text-right text-[#1E3A8A]">{fmt(g.total_debit)}</td>
                       <td className="p-4 text-right text-slate-700">{fmt(g.total_credit)}</td>
+                      <td className={`p-4 text-right ${g.total_balance < 0 ? "text-red-600" : "text-slate-900"}`}>{fmt(g.total_balance)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -207,14 +240,4 @@ export default function SimpleBooks() {
       </div>
     </div>
   );
-}
-
-function fmtDateTime(iso) {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString("el-GR", { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return iso;
-  }
 }
