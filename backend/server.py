@@ -152,6 +152,34 @@ def _email_wrapper(title: str, body_html: str) -> str:
 
 
 # ------------ Brute-force protection ------------
+# ------------ Brute-force protection ------------
+MAX_LOGIN_ATTEMPTS_DUPE = MAX_LOGIN_ATTEMPTS  # alias unused
+
+
+def make_captcha() -> Dict[str, Any]:
+    """Stateless math captcha. Returns question + signed token."""
+    import secrets
+    a = secrets.randbelow(9) + 1
+    b = secrets.randbelow(9) + 1
+    op = secrets.choice(["+", "-"])
+    if op == "-" and b > a:
+        a, b = b, a
+    answer = a + b if op == "+" else a - b
+    token = jwt.encode(
+        {"a": answer, "exp": datetime.now(timezone.utc) + timedelta(minutes=10)},
+        JWT_SECRET, algorithm=JWT_ALGORITHM,
+    )
+    return {"question": f"{a} {op} {b}", "token": token}
+
+
+def verify_captcha(token: str, answer: int) -> bool:
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return int(payload.get("a")) == int(answer)
+    except Exception:
+        return False
+
+
 async def check_lockout(email: str) -> Optional[int]:
     """Returns minutes remaining if locked; None if allowed."""
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_MINUTES)
@@ -211,11 +239,29 @@ class QuoteIn(BaseModel):
     email: EmailStr
     phone: Optional[str] = ""
     company: Optional[str] = ""
-    business_type: Optional[str] = ""  # ΟΕ, ΑΕ, ΙΚΕ, Ιδιώτης, Ατομική, κλπ
-    books_type: Optional[str] = ""     # απλογραφικά / διπλογραφικά / Β'
+    business_type: Optional[str] = ""
+    books_type: Optional[str] = ""
     employees: Optional[str] = ""
     services: Optional[List[str]] = []
     message: Optional[str] = ""
+    captcha_token: Optional[str] = ""
+    captcha_answer: Optional[str] = ""
+    website: Optional[str] = ""  # honeypot — must stay empty
+
+
+class BillingEntryIn(BaseModel):
+    type: str  # 'charge' | 'payment'
+    amount: float
+    date: Optional[str] = ""
+    description: Optional[str] = ""
+
+
+class FirmTransactionIn(BaseModel):
+    type: str  # 'income' | 'expense'
+    amount: float
+    date: Optional[str] = ""
+    description: Optional[str] = ""
+    client_id: Optional[str] = ""
 
 
 # ------------ File Parsing ------------
@@ -964,8 +1010,25 @@ async def update_client(client_id: str, payload: dict, admin: dict = Depends(req
 
 
 # ------------ Routes: Quote Requests ------------
+@api.get("/captcha")
+async def get_captcha():
+    return make_captcha()
+
+
 @api.post("/quotes")
 async def create_quote(payload: QuoteIn, request: Request):
+    # Honeypot: bots fill hidden field
+    if payload.website:
+        logger.warning(f"Spam quote blocked (honeypot): {payload.email}")
+        return {"ok": True, "id": "blocked"}  # silently accept (don't tip off bots)
+    # Captcha
+    try:
+        ans = int(str(payload.captcha_answer).strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Παρακαλώ απαντήστε την ερώτηση επαλήθευσης")
+    if not verify_captcha(payload.captcha_token or "", ans):
+        raise HTTPException(status_code=400, detail="Λάθος απάντηση στην επαλήθευση. Δοκιμάστε ξανά.")
+
     qid = str(uuid.uuid4())
     doc = {
         "id": qid,
@@ -1023,6 +1086,132 @@ async def update_quote_status(qid: str, payload: dict, admin: dict = Depends(req
 @api.delete("/admin/quotes/{qid}")
 async def delete_quote(qid: str, admin: dict = Depends(require_admin)):
     await db.quote_requests.delete_one({"id": qid})
+    return {"ok": True}
+
+
+# ------------ Routes: Client Billing (Καρτέλα Πελάτη) ------------
+@api.get("/admin/clients/{client_id}/billing")
+async def list_billing(client_id: str, admin: dict = Depends(require_admin)):
+    user = await db.users.find_one({"id": client_id, "role": "client"})
+    if not user:
+        raise HTTPException(status_code=404, detail="Πελάτης δε βρέθηκε")
+    cursor = db.client_billing.find({"client_id": client_id}, {"_id": 0}).sort("date", -1)
+    entries = await cursor.to_list(length=500)
+    total_charges = sum(e["amount"] for e in entries if e["type"] == "charge")
+    total_payments = sum(e["amount"] for e in entries if e["type"] == "payment")
+    return {
+        "entries": entries,
+        "total_charges": round(total_charges, 2),
+        "total_payments": round(total_payments, 2),
+        "balance": round(total_charges - total_payments, 2),
+    }
+
+
+@api.post("/admin/clients/{client_id}/billing")
+async def add_billing(client_id: str, payload: BillingEntryIn, admin: dict = Depends(require_admin)):
+    user = await db.users.find_one({"id": client_id, "role": "client"})
+    if not user:
+        raise HTTPException(status_code=404, detail="Πελάτης δε βρέθηκε")
+    if payload.type not in ("charge", "payment"):
+        raise HTTPException(status_code=400, detail="Λάθος τύπος")
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Ποσό > 0 παρακαλώ")
+    entry = {
+        "id": str(uuid.uuid4()),
+        "client_id": client_id,
+        "type": payload.type,
+        "amount": float(payload.amount),
+        "date": (payload.date or datetime.now(timezone.utc).date().isoformat()),
+        "description": (payload.description or "").strip(),
+        "created_by": admin["email"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.client_billing.insert_one(entry)
+    # Auto-mirror payments as firm income
+    if payload.type == "payment":
+        await db.firm_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "income",
+            "amount": float(payload.amount),
+            "date": entry["date"],
+            "description": f"Πληρωμή: {user['name']} — {entry['description'] or 'Λογιστικά'}",
+            "client_id": client_id,
+            "source": "client_payment",
+            "created_at": entry["created_at"],
+        })
+    return {"ok": True, "id": entry["id"]}
+
+
+@api.delete("/admin/clients/{client_id}/billing/{entry_id}")
+async def delete_billing(client_id: str, entry_id: str, admin: dict = Depends(require_admin)):
+    await db.client_billing.delete_one({"id": entry_id, "client_id": client_id})
+    # also remove the linked firm transaction if any
+    await db.firm_transactions.delete_many({"client_id": client_id, "source": "client_payment"})
+    # re-insert remaining payments as firm income
+    cursor = db.client_billing.find({"client_id": client_id, "type": "payment"})
+    user = await db.users.find_one({"id": client_id, "role": "client"})
+    name = user["name"] if user else "—"
+    async for p in cursor:
+        await db.firm_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "income", "amount": p["amount"], "date": p["date"],
+            "description": f"Πληρωμή: {name} — {p.get('description') or 'Λογιστικά'}",
+            "client_id": client_id, "source": "client_payment",
+            "created_at": p["created_at"],
+        })
+    return {"ok": True}
+
+
+# ------------ Routes: Firm Transactions (Οικονομικά Γραφείου) ------------
+@api.get("/admin/firm/transactions")
+async def list_firm_transactions(admin: dict = Depends(require_admin)):
+    cursor = db.firm_transactions.find({}, {"_id": 0}).sort("date", -1)
+    items = await cursor.to_list(length=1000)
+    total_income = sum(t["amount"] for t in items if t["type"] == "income")
+    total_expense = sum(t["amount"] for t in items if t["type"] == "expense")
+    # Outstanding receivables across all clients
+    billing_cursor = db.client_billing.find({})
+    receivables = 0.0
+    async for b in billing_cursor:
+        receivables += (b["amount"] if b["type"] == "charge" else -b["amount"])
+    return {
+        "items": items,
+        "total_income": round(total_income, 2),
+        "total_expense": round(total_expense, 2),
+        "net_profit": round(total_income - total_expense, 2),
+        "receivables": round(receivables, 2),
+    }
+
+
+@api.post("/admin/firm/transactions")
+async def add_firm_transaction(payload: FirmTransactionIn, admin: dict = Depends(require_admin)):
+    if payload.type not in ("income", "expense"):
+        raise HTTPException(status_code=400, detail="Λάθος τύπος")
+    if payload.amount <= 0:
+        raise HTTPException(status_code=400, detail="Ποσό > 0 παρακαλώ")
+    entry = {
+        "id": str(uuid.uuid4()),
+        "type": payload.type,
+        "amount": float(payload.amount),
+        "date": (payload.date or datetime.now(timezone.utc).date().isoformat()),
+        "description": (payload.description or "").strip(),
+        "client_id": payload.client_id or None,
+        "source": "manual",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.firm_transactions.insert_one(entry)
+    return {"ok": True, "id": entry["id"]}
+
+
+@api.delete("/admin/firm/transactions/{entry_id}")
+async def delete_firm_transaction(entry_id: str, admin: dict = Depends(require_admin)):
+    # Don't allow deleting auto-mirrored payments (they should be deleted via billing)
+    entry = await db.firm_transactions.find_one({"id": entry_id})
+    if not entry:
+        return {"ok": True}
+    if entry.get("source") == "client_payment":
+        raise HTTPException(status_code=400, detail="Διαγράψτε την αντίστοιχη πληρωμή από την καρτέλα του πελάτη.")
+    await db.firm_transactions.delete_one({"id": entry_id})
     return {"ok": True}
 
 

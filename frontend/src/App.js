@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { ConfirmProvider } from "@/context/ConfirmContext";
 import Layout from "@/components/Layout";
 import CookieBanner from "@/components/CookieBanner";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -24,7 +25,8 @@ function App() {
     <div className="App">
       <ThemeProvider>
         <AuthProvider>
-          <BrowserRouter>
+          <ConfirmProvider>
+            <BrowserRouter>
             <Toaster position="top-right" />
             <Routes>
               <Route path="/" element={<Layout><Home /></Layout>} />
@@ -63,6 +65,7 @@ function App() {
             </Routes>
             <CookieBanner />
           </BrowserRouter>
+          </ConfirmProvider>
         </AuthProvider>
       </ThemeProvider>
     </div>
@@ -70,3 +73,4 @@ function App() {
 }
 
 export default App;
+

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { api, formatApiErrorDetail } from "../lib/api";
-import { Users, Wallet, TrendingUp, FileText, Plus, X, Upload, Trash2, Activity, Eye, Mail, Phone, Briefcase, MessageSquare } from "lucide-react";
+import { Users, Wallet, TrendingUp, FileText, Plus, X, Upload, Trash2, Activity, Eye, Mail, Phone, Briefcase, MessageSquare, Receipt, BookOpen, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { useConfirm } from "../context/ConfirmContext";
 
 const fmt = (n) => new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);
 
@@ -23,21 +24,25 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [clients, setClients] = useState([]);
   const [quotes, setQuotes] = useState([]);
-  const [tab, setTab] = useState("clients"); // clients | quotes
+  const [firm, setFirm] = useState(null);
+  const [tab, setTab] = useState("clients");
   const [openCreate, setOpenCreate] = useState(false);
   const [openView, setOpenView] = useState(null);
   const [err, setErr] = useState("");
+  const confirm = useConfirm();
 
   const reload = async () => {
     try {
-      const [s, c, q] = await Promise.all([
+      const [s, c, q, f] = await Promise.all([
         api.get("/admin/stats"),
         api.get("/admin/clients"),
         api.get("/admin/quotes"),
+        api.get("/admin/firm/transactions"),
       ]);
       setStats(s.data);
       setClients(c.data);
       setQuotes(q.data);
+      setFirm(f.data);
     } catch (e) {
       setErr(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
     }
@@ -50,9 +55,24 @@ export default function AdminDashboard() {
     reload();
   };
   const deleteQuote = async (qid) => {
-    if (!window.confirm("Διαγραφή αιτήματος;")) return;
-    await api.delete(`/admin/quotes/${qid}`);
-    reload();
+    const ok = await confirm({ title: "Διαγραφή Αιτήματος", message: "Είστε σίγουρος ότι θέλετε να διαγράψετε αυτό το αίτημα;" });
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/quotes/${qid}`);
+      reload();
+    } catch (e) {
+      alert(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
+    }
+  };
+  const deleteClient = async (cid, name) => {
+    const ok = await confirm({ title: "Διαγραφή Πελάτη", message: `Είστε σίγουρος ότι θέλετε να διαγράψετε τον πελάτη "${name}";` });
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/clients/${cid}`);
+      reload();
+    } catch (e) {
+      alert(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
+    }
   };
 
   if (err) return <div className="p-12 text-red-600">{err}</div>;
@@ -76,13 +96,13 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* KPIs */}
+        {/* KPIs — firm financials */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-px bg-slate-200">
-          <KPI label="Σύνολο Πελατών" value={stats.total_clients} icon={Users} />
-          <KPI label="Νέα Αιτήματα" value={stats.new_quotes || 0} icon={MessageSquare} accent={stats.new_quotes ? "bg-amber-600 text-white" : "bg-slate-700 text-white"} />
-          <KPI label="Συνολικά Έσοδα" value={fmt(stats.total_income)} icon={TrendingUp} />
-          <KPI label="Καθαρά Κέρδη" value={fmt(stats.total_profit)} icon={Wallet} accent={stats.total_profit >= 0 ? "bg-[#1E3A8A] text-white" : "bg-red-600 text-white"} />
-          <KPI label="Αρχεία" value={stats.total_files} icon={FileText} accent="bg-slate-700 text-white" />
+          <KPI label="Πελάτες" value={stats.total_clients} icon={Users} />
+          <KPI label="Έσοδα Γραφείου" value={fmt(firm?.total_income)} icon={ArrowDownCircle} accent="bg-emerald-700 text-white" />
+          <KPI label="Έξοδα Γραφείου" value={fmt(firm?.total_expense)} icon={ArrowUpCircle} accent="bg-slate-700 text-white" />
+          <KPI label="Καθαρό Κέρδος" value={fmt(firm?.net_profit)} icon={Wallet} accent={(firm?.net_profit || 0) >= 0 ? "bg-[#1E3A8A] text-white" : "bg-red-600 text-white"} />
+          <KPI label="Χρωστούμενα Πελατών" value={fmt(firm?.receivables)} icon={Receipt} accent={(firm?.receivables || 0) > 0 ? "bg-amber-600 text-white" : "bg-slate-700 text-white"} />
         </div>
 
         {/* Chart */}
@@ -124,23 +144,19 @@ export default function AdminDashboard() {
         </div>
 
         {/* Tabs */}
-        <div className="mt-10 flex border-b border-slate-200">
-          <button
-            onClick={() => setTab("clients")}
-            data-testid="tab-clients"
-            className={`px-6 py-3 text-xs font-semibold tracking-[0.2em] uppercase transition-colors ${tab === "clients" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500 hover:text-slate-700"}`}
-          >
+        <div className="mt-10 flex border-b border-slate-200 flex-wrap">
+          <button onClick={() => setTab("clients")} data-testid="tab-clients"
+            className={`px-6 py-3 text-xs font-semibold tracking-[0.2em] uppercase ${tab === "clients" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500 hover:text-slate-700"}`}>
             Πελάτες ({clients.length})
           </button>
-          <button
-            onClick={() => setTab("quotes")}
-            data-testid="tab-quotes"
-            className={`px-6 py-3 text-xs font-semibold tracking-[0.2em] uppercase transition-colors flex items-center gap-2 ${tab === "quotes" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500 hover:text-slate-700"}`}
-          >
+          <button onClick={() => setTab("firm")} data-testid="tab-firm"
+            className={`px-6 py-3 text-xs font-semibold tracking-[0.2em] uppercase ${tab === "firm" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500 hover:text-slate-700"}`}>
+            Οικονομικά Γραφείου
+          </button>
+          <button onClick={() => setTab("quotes")} data-testid="tab-quotes"
+            className={`px-6 py-3 text-xs font-semibold tracking-[0.2em] uppercase flex items-center gap-2 ${tab === "quotes" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500 hover:text-slate-700"}`}>
             Αιτήματα Προσφοράς ({quotes.length})
-            {stats.new_quotes > 0 && (
-              <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5">{stats.new_quotes}</span>
-            )}
+            {stats.new_quotes > 0 && <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5">{stats.new_quotes}</span>}
           </button>
         </div>
 
@@ -186,11 +202,7 @@ export default function AdminDashboard() {
                           <Eye size={12} /> Προβολή
                         </button>
                         <button
-                          onClick={async () => {
-                            if (!window.confirm(`Διαγραφή πελάτη ${c.name};`)) return;
-                            await api.delete(`/admin/clients/${c.id}`);
-                            reload();
-                          }}
+                          onClick={() => deleteClient(c.id, c.name)}
                           data-testid={`delete-client-${c.id}`}
                           className="inline-flex items-center gap-1 px-3 py-2 border border-red-300 text-red-600 text-[10px] uppercase tracking-wider font-semibold hover:bg-red-600 hover:text-white transition-colors"
                         >
@@ -209,6 +221,11 @@ export default function AdminDashboard() {
         {/* Quotes Tab */}
         {tab === "quotes" && (
           <QuotesTable quotes={quotes} updateStatus={updateQuoteStatus} onDelete={deleteQuote} />
+        )}
+
+        {/* Firm Tab */}
+        {tab === "firm" && (
+          <FirmFinancials firm={firm} reload={reload} confirm={confirm} />
         )}
       </div>
 
@@ -303,6 +320,143 @@ function StatusBadge({ status }) {
   return <span className={`text-[10px] uppercase tracking-wider px-2 py-1 ${m.bg}`}>{m.label}</span>;
 }
 
+
+function FirmFinancials({ firm, reload, confirm }) {
+  const [show, setShow] = useState(false);
+  const [form, setForm] = useState({ type: "expense", amount: "", date: new Date().toISOString().slice(0, 10), description: "" });
+  const [err, setErr] = useState("");
+
+  if (!firm) return <div className="p-8 text-slate-400 text-sm">Φόρτωση…</div>;
+
+  const add = async (e) => {
+    e.preventDefault(); setErr("");
+    try {
+      await api.post("/admin/firm/transactions", { ...form, amount: parseFloat(form.amount) });
+      setShow(false);
+      setForm({ type: "expense", amount: "", date: new Date().toISOString().slice(0, 10), description: "" });
+      reload();
+    } catch (e) {
+      setErr(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
+    }
+  };
+
+  const del = async (id, isAuto) => {
+    if (isAuto) {
+      alert("Αυτή η εγγραφή προέρχεται από πληρωμή πελάτη. Διαγράψτε την από την καρτέλα του πελάτη.");
+      return;
+    }
+    const ok = await confirm({ title: "Διαγραφή κίνησης", message: "Διαγραφή αυτής της οικονομικής κίνησης;" });
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/firm/transactions/${id}`);
+      reload();
+    } catch (e) {
+      alert(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-slate-200 border-t-0" data-testid="firm-financials">
+      <div className="p-6 flex items-center justify-between flex-wrap gap-3 border-b border-slate-200">
+        <div>
+          <h3 className="font-serif-display text-xl text-slate-900">Οικονομικές Κινήσεις Γραφείου</h3>
+          <p className="text-xs text-slate-500 mt-1">Οι πληρωμές πελατών προστίθενται αυτόματα ως έσοδα.</p>
+        </div>
+        <button onClick={() => setShow(true)} data-testid="firm-add-tx-btn"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A8A] text-white text-xs font-semibold tracking-wider uppercase hover:bg-[#1E40AF]">
+          <Plus size={14} /> Νέα Κίνηση
+        </button>
+      </div>
+
+      {firm.items.length === 0 ? (
+        <div className="p-12 text-center text-slate-400 text-sm">Καμία κίνηση ακόμη.</div>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="bg-[#F5F5F5] text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold">
+            <tr>
+              <th className="text-left p-4">Ημερομηνία</th>
+              <th className="text-left p-4">Τύπος</th>
+              <th className="text-left p-4">Περιγραφή</th>
+              <th className="text-right p-4">Ποσό</th>
+              <th className="text-right p-4">Ενέργειες</th>
+            </tr>
+          </thead>
+          <tbody>
+            {firm.items.map((t) => (
+              <tr key={t.id} className="border-t border-slate-100">
+                <td className="p-4 text-slate-700">{t.date}</td>
+                <td className="p-4">
+                  <span className={`text-[10px] uppercase tracking-wider px-2 py-1 ${t.type === "income" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"}`}>
+                    {t.type === "income" ? "Έσοδο" : "Έξοδο"}
+                  </span>
+                  {t.source === "client_payment" && <span className="ml-2 text-[9px] text-slate-400 uppercase">auto</span>}
+                </td>
+                <td className="p-4 text-slate-600">{t.description || "—"}</td>
+                <td className={`p-4 text-right font-semibold ${t.type === "income" ? "text-emerald-700" : "text-slate-900"}`}>
+                  {t.type === "income" ? "+" : "−"}{fmt(t.amount)}
+                </td>
+                <td className="p-4 text-right">
+                  <button onClick={() => del(t.id, t.source === "client_payment")}
+                    data-testid={`firm-del-${t.id}`}
+                    className="text-red-600 hover:text-red-800"><Trash2 size={14} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {show && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShow(false)}>
+          <div className="bg-white max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <h3 className="font-serif-display text-xl text-slate-900">Νέα Κίνηση</h3>
+              <button onClick={() => setShow(false)}><X size={20} /></button>
+            </div>
+            <form onSubmit={add} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-px bg-slate-200">
+                {[["expense", "Έξοδο"], ["income", "Έσοδο"]].map(([v, l]) => (
+                  <button key={v} type="button" onClick={() => setForm({ ...form, type: v })}
+                    data-testid={`firm-form-type-${v}`}
+                    className={`py-3 text-xs font-semibold tracking-wider uppercase ${form.type === v ? "bg-[#1E3A8A] text-white" : "bg-white text-slate-700"}`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <Input label="Ποσό (€)" type="number" step="0.01" required value={form.amount}
+                onChange={(v) => setForm({ ...form, amount: v })} testid="firm-form-amount" />
+              <Input label="Ημερομηνία" type="date" required value={form.date}
+                onChange={(v) => setForm({ ...form, date: v })} testid="firm-form-date" />
+              <Input label="Περιγραφή" value={form.description}
+                onChange={(v) => setForm({ ...form, description: v })} testid="firm-form-description" />
+              {err && <div className="text-sm text-red-600">{err}</div>}
+              <button type="submit" data-testid="firm-form-submit"
+                className="w-full py-3 bg-[#1E3A8A] text-white text-xs tracking-[0.25em] uppercase font-semibold hover:bg-[#1E40AF]">
+                Αποθήκευση
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, testid, ...rest }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        data-testid={testid}
+        className="w-full mt-1 p-3 border border-slate-300 text-sm focus:border-[#1E3A8A] outline-none"
+        {...rest}
+      />
+    </label>
+  );
+}
+
 function CreateClientModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ email: "", password: "", name: "", company: "", phone: "", afm: "", books_type: "simple" });
   const [err, setErr] = useState("");
@@ -381,8 +535,12 @@ function CreateClientModal({ onClose, onSaved }) {
 
 function ClientDetailModal({ client, onClose }) {
   const [data, setData] = useState(null);
+  const [billing, setBilling] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState("");
+  const [billForm, setBillForm] = useState({ type: "charge", amount: "", date: new Date().toISOString().slice(0, 10), description: "" });
+  const [activeTab, setActiveTab] = useState("data"); // data | billing
+  const confirm = useConfirm();
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -392,8 +550,12 @@ function ClientDetailModal({ client, onClose }) {
 
   const load = async () => {
     try {
-      const r = await api.get(`/admin/clients/${client.id}/dashboard`);
+      const [r, b] = await Promise.all([
+        api.get(`/admin/clients/${client.id}/dashboard`),
+        api.get(`/admin/clients/${client.id}/billing`),
+      ]);
       setData(r.data);
+      setBilling(b.data);
     } catch (e) {
       setErr(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
     }
@@ -415,9 +577,36 @@ function ClientDetailModal({ client, onClose }) {
   };
 
   const removeFile = async (filename) => {
-    if (!window.confirm(`Διαγραφή ${filename};`)) return;
-    await api.delete(`/admin/clients/${client.id}/files/${encodeURIComponent(filename)}`);
-    load();
+    const ok = await confirm({ title: "Διαγραφή αρχείου", message: `Διαγραφή του αρχείου "${filename}";` });
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/clients/${client.id}/files/${encodeURIComponent(filename)}`);
+      load();
+    } catch (e) {
+      alert(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
+    }
+  };
+
+  const addBilling = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post(`/admin/clients/${client.id}/billing`, { ...billForm, amount: parseFloat(billForm.amount) });
+      setBillForm({ type: "charge", amount: "", date: new Date().toISOString().slice(0, 10), description: "" });
+      load();
+    } catch (e) {
+      alert(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
+    }
+  };
+
+  const delBilling = async (id) => {
+    const ok = await confirm({ title: "Διαγραφή εγγραφής", message: "Διαγραφή της εγγραφής από την καρτέλα;" });
+    if (!ok) return;
+    try {
+      await api.delete(`/admin/clients/${client.id}/billing/${id}`);
+      load();
+    } catch (e) {
+      alert(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
+    }
   };
 
   return (
@@ -434,7 +623,23 @@ function ClientDetailModal({ client, onClose }) {
 
         <div className="p-6">
           {err && <div className="text-sm text-red-600 mb-4">{err}</div>}
-          {!data ? (
+
+          {/* Tabs inside modal */}
+          <div className="flex border-b border-slate-200 mb-6">
+            <button onClick={() => setActiveTab("data")} data-testid="client-tab-data"
+              className={`px-5 py-2 text-xs font-semibold tracking-wider uppercase ${activeTab === "data" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500"}`}>
+              Στοιχεία & Αρχεία
+            </button>
+            <button onClick={() => setActiveTab("billing")} data-testid="client-tab-billing"
+              className={`px-5 py-2 text-xs font-semibold tracking-wider uppercase flex items-center gap-2 ${activeTab === "billing" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500"}`}>
+              Καρτέλα · Χρεώσεις/Πληρωμές
+              {billing && billing.balance > 0 && (
+                <span className="bg-amber-600 text-white text-[10px] px-1.5">{fmt(billing.balance)}</span>
+              )}
+            </button>
+          </div>
+
+          {activeTab === "data" && (!data ? (
             <div className="text-slate-400 text-center py-12">Φόρτωση…</div>
           ) : (
             <>
@@ -483,6 +688,104 @@ function ClientDetailModal({ client, onClose }) {
                 ))}
               </div>
             </>
+          ))}
+
+          {activeTab === "billing" && billing && (
+            <div data-testid="client-billing-section">
+              <div className="grid grid-cols-3 gap-px bg-slate-200 mb-6">
+                <div className="bg-white p-4">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold">Σύνολο Χρεώσεων</div>
+                  <div className="font-serif-display text-2xl text-slate-900 mt-2">{fmt(billing.total_charges)}</div>
+                </div>
+                <div className="bg-white p-4">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold">Σύνολο Πληρωμών</div>
+                  <div className="font-serif-display text-2xl text-emerald-700 mt-2">{fmt(billing.total_payments)}</div>
+                </div>
+                <div className="bg-white p-4">
+                  <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold">{billing.balance > 0 ? "Χρωστάει" : "Καθαρό"}</div>
+                  <div className={`font-serif-display text-2xl mt-2 ${billing.balance > 0 ? "text-amber-600" : "text-slate-900"}`}>{fmt(billing.balance)}</div>
+                </div>
+              </div>
+
+              <form onSubmit={addBilling} className="bg-[#F5F5F5] p-4 mb-6">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold mb-3">Νέα Εγγραφή</div>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                  <div className="md:col-span-1">
+                    <label className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Τύπος</label>
+                    <select value={billForm.type} onChange={(e) => setBillForm({ ...billForm, type: e.target.value })}
+                      data-testid="billing-type"
+                      className="w-full mt-1 p-2.5 border border-slate-300 text-sm bg-white">
+                      <option value="charge">Χρέωση</option>
+                      <option value="payment">Πληρωμή</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Ποσό (€)</label>
+                    <input type="number" step="0.01" required value={billForm.amount}
+                      onChange={(e) => setBillForm({ ...billForm, amount: e.target.value })}
+                      data-testid="billing-amount"
+                      className="w-full mt-1 p-2.5 border border-slate-300 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Ημερομηνία</label>
+                    <input type="date" required value={billForm.date}
+                      onChange={(e) => setBillForm({ ...billForm, date: e.target.value })}
+                      data-testid="billing-date"
+                      className="w-full mt-1 p-2.5 border border-slate-300 text-sm" />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Περιγραφή</label>
+                    <input value={billForm.description}
+                      onChange={(e) => setBillForm({ ...billForm, description: e.target.value })}
+                      data-testid="billing-description"
+                      placeholder="π.χ. Λογιστικά Μαΐου"
+                      className="w-full mt-1 p-2.5 border border-slate-300 text-sm" />
+                  </div>
+                  <button type="submit" data-testid="billing-submit"
+                    className="px-4 py-2.5 bg-[#1E3A8A] text-white text-xs tracking-wider uppercase font-semibold hover:bg-[#1E40AF]">
+                    Προσθήκη
+                  </button>
+                </div>
+              </form>
+
+              {billing.entries.length === 0 ? (
+                <div className="text-sm text-slate-400 py-8 text-center border border-dashed border-slate-300">
+                  Καμία εγγραφή στην καρτέλα.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-[#F5F5F5] text-[10px] uppercase tracking-[0.2em] text-slate-500 font-semibold">
+                    <tr>
+                      <th className="text-left p-3">Ημερομηνία</th>
+                      <th className="text-left p-3">Τύπος</th>
+                      <th className="text-left p-3">Περιγραφή</th>
+                      <th className="text-right p-3">Ποσό</th>
+                      <th className="text-right p-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {billing.entries.map((e) => (
+                      <tr key={e.id} className="border-t border-slate-100">
+                        <td className="p-3 text-slate-700">{e.date}</td>
+                        <td className="p-3">
+                          <span className={`text-[10px] uppercase tracking-wider px-2 py-1 ${e.type === "payment" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                            {e.type === "payment" ? "Πληρωμή" : "Χρέωση"}
+                          </span>
+                        </td>
+                        <td className="p-3 text-slate-600">{e.description || "—"}</td>
+                        <td className={`p-3 text-right font-semibold ${e.type === "payment" ? "text-emerald-700" : "text-slate-900"}`}>
+                          {e.type === "payment" ? "+" : "−"}{fmt(e.amount)}
+                        </td>
+                        <td className="p-3 text-right">
+                          <button onClick={() => delBilling(e.id)} className="text-red-600 hover:text-red-800"
+                            data-testid={`billing-del-${e.id}`}><Trash2 size={14} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           )}
         </div>
       </div>

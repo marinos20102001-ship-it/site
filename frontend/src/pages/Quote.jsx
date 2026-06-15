@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api, formatApiErrorDetail } from "../lib/api";
-import { ArrowRight, Check, AlertCircle, Send } from "lucide-react";
+import { ArrowRight, Check, AlertCircle, RefreshCw, Shield } from "lucide-react";
 
 const SERVICES = [
   "Λογιστική υποστήριξη",
@@ -20,9 +20,19 @@ export default function Quote() {
     name: "", email: "", phone: "", company: "",
     business_type: "", books_type: "", employees: "",
     services: [], message: "",
+    captcha_answer: "", website: "", // honeypot
   });
-  const [status, setStatus] = useState("idle"); // idle | sending | success | error
+  const [captcha, setCaptcha] = useState(null); // {question, token}
+  const [status, setStatus] = useState("idle");
   const [err, setErr] = useState("");
+
+  const loadCaptcha = async () => {
+    try {
+      const r = await api.get("/captcha");
+      setCaptcha(r.data);
+    } catch { /* ignore */ }
+  };
+  useEffect(() => { loadCaptcha(); }, []);
 
   const toggleService = (s) =>
     setForm((f) => ({
@@ -34,12 +44,14 @@ export default function Quote() {
     e.preventDefault();
     setStatus("sending"); setErr("");
     try {
-      await api.post("/quotes", form);
+      await api.post("/quotes", { ...form, captcha_token: captcha?.token });
       setStatus("success");
-      setForm({ name: "", email: "", phone: "", company: "", business_type: "", books_type: "", employees: "", services: [], message: "" });
+      setForm({ name: "", email: "", phone: "", company: "", business_type: "", books_type: "", employees: "", services: [], message: "", captcha_answer: "", website: "" });
     } catch (e) {
       setErr(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
       setStatus("error");
+      loadCaptcha(); // new captcha after failure
+      setForm((f) => ({ ...f, captcha_answer: "" }));
     }
   };
 
@@ -188,6 +200,52 @@ export default function Quote() {
                 placeholder="Περιγράψτε τις ανάγκες σας ή ρωτήστε ό,τι θέλετε…"
                 className="w-full p-4 border border-slate-300 text-sm focus:border-[#1E3A8A] outline-none resize-y"
               />
+
+              {/* Honeypot — hidden from real users, bots will fill it */}
+              <input
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={form.website}
+                onChange={(e) => setForm({ ...form, website: e.target.value })}
+                style={{ position: "absolute", left: "-9999px", opacity: 0, height: 0, width: 0 }}
+                aria-hidden="true"
+              />
+
+              {/* Captcha */}
+              <div className="mt-6 p-5 bg-blue-50 border border-blue-200">
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] text-[#1E3A8A] font-semibold mb-3">
+                  <Shield size={14} /> Επαλήθευση Ανθρώπινου Χρήστη
+                </div>
+                {captcha ? (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-sm text-slate-700">Πόσο κάνει</span>
+                    <span className="font-serif-display text-2xl text-[#1E3A8A] bg-white px-4 py-2 border border-slate-300 select-none" data-testid="captcha-question">
+                      {captcha.question} = ?
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      value={form.captcha_answer}
+                      onChange={(e) => setForm({ ...form, captcha_answer: e.target.value })}
+                      data-testid="captcha-answer"
+                      className="w-24 p-2 border border-slate-300 text-center text-lg focus:border-[#1E3A8A] outline-none"
+                      placeholder="?"
+                    />
+                    <button
+                      type="button"
+                      onClick={loadCaptcha}
+                      data-testid="captcha-refresh"
+                      className="text-xs text-slate-500 hover:text-[#1E3A8A] inline-flex items-center gap-1"
+                    >
+                      <RefreshCw size={12} /> Αλλαγή
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400">Φόρτωση…</div>
+                )}
+              </div>
 
               {err && (
                 <div data-testid="quote-error" className="mt-4 flex items-start gap-2 text-sm text-red-600 bg-red-50 border-l-2 border-red-600 p-3">
