@@ -14,7 +14,7 @@
 ---
 
 ## ΒΗΜΑ 1 — Domain
-1. **papaki.gr** → αγοράστε `dmaccounting.gr` (~10€/έτος)
+1. **papaki.gr** → αγοράστε `dm-accounting.gr` (~10€/έτος)
 
 ## ΒΗΜΑ 2 — MongoDB Atlas (δωρεάν)
 1. https://www.mongodb.com/cloud/atlas/register
@@ -80,8 +80,8 @@ flyctl secrets set \
   JWT_SECRET="$(openssl rand -hex 32)" \
   ADMIN_EMAIL="marinosgr@yahoo.gr" \
   ADMIN_PASSWORD="ΒΑΛΤΕ_ΔΥΝΑΤΟ_ΚΩΔΙΚΟ_ΕΔΩ" \
-  FRONTEND_URL="https://dmaccounting.gr" \
-  CORS_ORIGINS="https://dmaccounting.gr,https://www.dmaccounting.gr"
+  FRONTEND_URL="https://dm-accounting.gr" \
+  CORS_ORIGINS="https://dm-accounting.gr,https://www.dm-accounting.gr"
 ```
 
 ### Στ. Deploy!
@@ -110,14 +110,14 @@ https://dm-accounting.fly.dev
 
 ### Στο Vercel
 1. Project Settings → **Domains** → Add
-2. Πληκτρολογήστε `dmaccounting.gr`
-3. Επαναλάβετε για `www.dmaccounting.gr`
+2. Πληκτρολογήστε `dm-accounting.gr`
+3. Επαναλάβετε για `www.dm-accounting.gr`
 4. Σημειώστε τα DNS records που σας δίνει (συνήθως):
-   - `dmaccounting.gr` → **A** record → `76.76.21.21`
-   - `www.dmaccounting.gr` → **CNAME** → `cname.vercel-dns.com`
+   - `dm-accounting.gr` → **A** record → `76.76.21.21`
+   - `www.dm-accounting.gr` → **CNAME** → `cname.vercel-dns.com`
 
 ### Στο papaki.gr
-1. Login → Τα Domain μου → **dmaccounting.gr** → DNS Records
+1. Login → Τα Domain μου → **dm-accounting.gr** → DNS Records
 2. Διαγράψτε ΟΛΑ τα παλιά A records
 3. Προσθέστε:
    - Type `A`, Host `@`, Value `76.76.21.21`
@@ -128,14 +128,14 @@ https://dm-accounting.fly.dev
 Μόλις το domain ενεργοποιηθεί:
 ```bash
 flyctl secrets set \
-  FRONTEND_URL="https://dmaccounting.gr" \
-  CORS_ORIGINS="https://dmaccounting.gr,https://www.dmaccounting.gr,https://dm-accounting.vercel.app"
+  FRONTEND_URL="https://dm-accounting.gr" \
+  CORS_ORIGINS="https://dm-accounting.gr,https://www.dm-accounting.gr,https://dm-accounting.vercel.app"
 ```
 
 ## ΒΗΜΑ 8 — Πρώτη χρήση
-1. Πηγαίνετε στο `https://dmaccounting.gr`
+1. Πηγαίνετε στο `https://dm-accounting.gr`
 2. Login: `marinosgr@yahoo.gr` + το `ADMIN_PASSWORD` που βάλατε
-3. **Διαγράψτε** τον demo client `client@dmaccounting.gr` από το admin panel
+3. **Διαγράψτε** τον demo client `client@dm-accounting.gr` από το admin panel
 4. Δημιουργήστε τους πραγματικούς πελάτες
 
 ---
