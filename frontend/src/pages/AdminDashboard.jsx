@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api, formatApiErrorDetail } from "../lib/api";
-import { Users, Wallet, TrendingUp, FileText, Plus, X, Upload, Trash2, Activity, Eye } from "lucide-react";
+import { Users, Wallet, TrendingUp, FileText, Plus, X, Upload, Trash2, Activity, Eye, Mail, Phone, Briefcase, MessageSquare } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const fmt = (n) => new Intl.NumberFormat("el-GR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n || 0);
@@ -22,21 +22,38 @@ function KPI({ label, value, icon: Icon, accent }) {
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [clients, setClients] = useState([]);
+  const [quotes, setQuotes] = useState([]);
+  const [tab, setTab] = useState("clients"); // clients | quotes
   const [openCreate, setOpenCreate] = useState(false);
   const [openView, setOpenView] = useState(null);
   const [err, setErr] = useState("");
 
   const reload = async () => {
     try {
-      const [s, c] = await Promise.all([api.get("/admin/stats"), api.get("/admin/clients")]);
+      const [s, c, q] = await Promise.all([
+        api.get("/admin/stats"),
+        api.get("/admin/clients"),
+        api.get("/admin/quotes"),
+      ]);
       setStats(s.data);
       setClients(c.data);
+      setQuotes(q.data);
     } catch (e) {
       setErr(formatApiErrorDetail(e?.response?.data?.detail) || e.message);
     }
   };
 
   useEffect(() => { reload(); }, []);
+
+  const updateQuoteStatus = async (qid, status) => {
+    await api.patch(`/admin/quotes/${qid}`, { status });
+    reload();
+  };
+  const deleteQuote = async (qid) => {
+    if (!window.confirm("Διαγραφή αιτήματος;")) return;
+    await api.delete(`/admin/quotes/${qid}`);
+    reload();
+  };
 
   if (err) return <div className="p-12 text-red-600">{err}</div>;
   if (!stats) return <div className="p-12 text-slate-500" data-testid="admin-loading">Φόρτωση δεδομένων…</div>;
@@ -60,8 +77,9 @@ export default function AdminDashboard() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-px bg-slate-200">
           <KPI label="Σύνολο Πελατών" value={stats.total_clients} icon={Users} />
+          <KPI label="Νέα Αιτήματα" value={stats.new_quotes || 0} icon={MessageSquare} accent={stats.new_quotes ? "bg-amber-600 text-white" : "bg-slate-700 text-white"} />
           <KPI label="Συνολικά Έσοδα" value={fmt(stats.total_income)} icon={TrendingUp} />
           <KPI label="Καθαρά Κέρδη" value={fmt(stats.total_profit)} icon={Wallet} accent={stats.total_profit >= 0 ? "bg-[#1E3A8A] text-white" : "bg-red-600 text-white"} />
           <KPI label="Αρχεία" value={stats.total_files} icon={FileText} accent="bg-slate-700 text-white" />
@@ -105,8 +123,30 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="mt-10 flex border-b border-slate-200">
+          <button
+            onClick={() => setTab("clients")}
+            data-testid="tab-clients"
+            className={`px-6 py-3 text-xs font-semibold tracking-[0.2em] uppercase transition-colors ${tab === "clients" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500 hover:text-slate-700"}`}
+          >
+            Πελάτες ({clients.length})
+          </button>
+          <button
+            onClick={() => setTab("quotes")}
+            data-testid="tab-quotes"
+            className={`px-6 py-3 text-xs font-semibold tracking-[0.2em] uppercase transition-colors flex items-center gap-2 ${tab === "quotes" ? "border-b-2 border-[#1E3A8A] text-[#1E3A8A]" : "text-slate-500 hover:text-slate-700"}`}
+          >
+            Αιτήματα Προσφοράς ({quotes.length})
+            {stats.new_quotes > 0 && (
+              <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5">{stats.new_quotes}</span>
+            )}
+          </button>
+        </div>
+
         {/* Clients Table */}
-        <div className="bg-white border border-slate-200 mt-6">
+        {tab === "clients" && (
+        <div className="bg-white border border-slate-200 border-t-0">
           <div className="p-6 border-b border-slate-200">
             <h3 className="font-serif-display text-xl text-slate-900">Πελάτες</h3>
           </div>
@@ -164,12 +204,103 @@ export default function AdminDashboard() {
             </table>
           </div>
         </div>
+        )}
+
+        {/* Quotes Tab */}
+        {tab === "quotes" && (
+          <QuotesTable quotes={quotes} updateStatus={updateQuoteStatus} onDelete={deleteQuote} />
+        )}
       </div>
 
       {openCreate && <CreateClientModal onClose={() => setOpenCreate(false)} onSaved={() => { setOpenCreate(false); reload(); }} />}
       {openView && <ClientDetailModal client={openView} onClose={() => setOpenView(null)} />}
     </div>
   );
+}
+
+function QuotesTable({ quotes, updateStatus, onDelete }) {
+  return (
+    <div className="bg-white border border-slate-200 border-t-0" data-testid="quotes-section">
+      {quotes.length === 0 ? (
+        <div className="p-12 text-center text-slate-400 text-sm">Δεν υπάρχουν αιτήματα ακόμη.</div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {quotes.map((q) => (
+            <div key={q.id} data-testid={`quote-${q.id}`} className="p-6 md:p-8 hover:bg-slate-50 transition-colors">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h4 className="font-serif-display text-xl text-slate-900">{q.name}</h4>
+                    <StatusBadge status={q.status} />
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider">{new Date(q.created_at).toLocaleString("el-GR", { dateStyle: "short", timeStyle: "short" })}</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Mail size={13} /> <a href={`mailto:${q.email}`} className="hover:text-[#1E3A8A]">{q.email}</a>
+                    </div>
+                    {q.phone && (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <Phone size={13} /> <a href={`tel:${q.phone}`} className="hover:text-[#1E3A8A]">{q.phone}</a>
+                      </div>
+                    )}
+                    {q.company && (
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <Briefcase size={13} /> {q.company} {q.business_type && `· ${q.business_type}`}
+                      </div>
+                    )}
+                    {q.books_type && (
+                      <div className="text-slate-500 text-xs">Βιβλία: {q.books_type} {q.employees && `· Εργαζόμενοι: ${q.employees}`}</div>
+                    )}
+                  </div>
+                  {q.services && q.services.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {q.services.map((s, i) => (
+                        <span key={i} className="text-[10px] uppercase tracking-wider bg-blue-50 text-[#1E3A8A] px-2 py-1 border border-[#1E3A8A]/20">{s}</span>
+                      ))}
+                    </div>
+                  )}
+                  {q.message && (
+                    <p className="mt-3 text-sm text-slate-600 bg-slate-50 border-l-2 border-[#1E3A8A] p-3 italic">"{q.message}"</p>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 md:w-44 shrink-0">
+                  <select
+                    value={q.status}
+                    onChange={(e) => updateStatus(q.id, e.target.value)}
+                    data-testid={`quote-status-${q.id}`}
+                    className="text-xs p-2 border border-slate-300 bg-white outline-none focus:border-[#1E3A8A]"
+                  >
+                    <option value="new">Νέο</option>
+                    <option value="contacted">Επικοινωνία</option>
+                    <option value="won">Κερδίθηκε</option>
+                    <option value="lost">Χάθηκε</option>
+                  </select>
+                  <button
+                    onClick={() => onDelete(q.id)}
+                    data-testid={`quote-delete-${q.id}`}
+                    className="text-xs px-3 py-2 border border-red-300 text-red-600 hover:bg-red-600 hover:text-white inline-flex items-center justify-center gap-1.5"
+                  >
+                    <Trash2 size={12} /> Διαγραφή
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    new: { bg: "bg-amber-100 text-amber-800", label: "Νέο" },
+    contacted: { bg: "bg-blue-100 text-[#1E3A8A]", label: "Επικοινωνία" },
+    won: { bg: "bg-emerald-100 text-emerald-800", label: "Κερδίθηκε" },
+    lost: { bg: "bg-slate-100 text-slate-700", label: "Χάθηκε" },
+  };
+  const m = map[status] || map.new;
+  return <span className={`text-[10px] uppercase tracking-wider px-2 py-1 ${m.bg}`}>{m.label}</span>;
 }
 
 function CreateClientModal({ onClose, onSaved }) {

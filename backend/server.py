@@ -10,8 +10,10 @@ import re
 import csv
 import uuid
 import logging
+import asyncio
 import bcrypt
 import jwt
+import resend
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 
@@ -33,6 +35,17 @@ CLIENTS_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 JWT_ALGORITHM = "HS256"
 JWT_SECRET = os.environ['JWT_SECRET']
+
+# Resend (email)
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "marinosgr@yahoo.gr")
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
+
+# Brute-force protection
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_MINUTES = 15
 
 app = FastAPI(title="DM Accounting API")
 api = APIRouter(prefix="/api")
@@ -101,6 +114,72 @@ async def require_admin(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 
+# ------------ Email Helpers ------------
+async def send_email_safe(to: str, subject: str, html: str) -> bool:
+    """Non-blocking email send. Logs errors but never raises (won't break flows)."""
+    if not RESEND_API_KEY:
+        logger.warning(f"[email-skip] {subject} -> {to} (no RESEND_API_KEY)")
+        return False
+    try:
+        params = {"from": f"DM Accounting <{SENDER_EMAIL}>",
+                  "to": [to], "subject": subject, "html": html}
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"[email-sent] {subject} -> {to} id={result.get('id') if isinstance(result, dict) else result}")
+        return True
+    except Exception as e:
+        logger.error(f"[email-fail] {subject} -> {to}: {e}")
+        return False
+
+
+def _email_wrapper(title: str, body_html: str) -> str:
+    return f"""<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#F5F5F5;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F5F5F5;padding:30px 0;">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0" style="background:#FFF;border:1px solid #E2E8F0;">
+  <tr><td style="background:#1E3A8A;padding:24px;color:#fff;">
+    <div style="font-family:Georgia,serif;font-size:24px;font-weight:bold;">DM Accounting</div>
+    <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#BFDBFE;margin-top:4px;">Λογιστικό Γραφείο</div>
+  </td></tr>
+  <tr><td style="padding:32px 28px;color:#0F172A;">
+    <h2 style="margin:0 0 16px;font-family:Georgia,serif;font-size:22px;color:#1E3A8A;">{title}</h2>
+    {body_html}
+  </td></tr>
+  <tr><td style="background:#F5F5F5;padding:16px 28px;border-top:1px solid #E2E8F0;color:#64748B;font-size:12px;">
+    Δελημιχάλης Μαρίνος Φώτιος · Πατέλες Μιλτιάδου 9 · <a href="mailto:marinosgr@yahoo.gr" style="color:#1E3A8A;">marinosgr@yahoo.gr</a>
+  </td></tr>
+</table>
+</td></tr></table></body></html>"""
+
+
+# ------------ Brute-force protection ------------
+async def check_lockout(email: str) -> Optional[int]:
+    """Returns minutes remaining if locked; None if allowed."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=LOCKOUT_MINUTES)
+    count = await db.login_attempts.count_documents({
+        "email": email, "success": False, "timestamp": {"$gte": cutoff.isoformat()}
+    })
+    if count >= MAX_LOGIN_ATTEMPTS:
+        oldest = await db.login_attempts.find_one(
+            {"email": email, "success": False, "timestamp": {"$gte": cutoff.isoformat()}},
+            sort=[("timestamp", 1)],
+        )
+        if oldest:
+            unlock = datetime.fromisoformat(oldest["timestamp"]) + timedelta(minutes=LOCKOUT_MINUTES)
+            remaining = max(1, int((unlock - datetime.now(timezone.utc)).total_seconds() // 60) + 1)
+            return remaining
+    return None
+
+
+async def record_login_attempt(email: str, success: bool, ip: str = ""):
+    await db.login_attempts.insert_one({
+        "email": email, "success": success, "ip": ip,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    if success:
+        # purge prior failed attempts on success
+        await db.login_attempts.delete_many({"email": email, "success": False})
+
+
 # ------------ Models ------------
 class LoginIn(BaseModel):
     email: EmailStr
@@ -125,6 +204,18 @@ class UserOut(BaseModel):
     company: Optional[str] = ""
     phone: Optional[str] = ""
     afm: Optional[str] = ""
+
+
+class QuoteIn(BaseModel):
+    name: str
+    email: EmailStr
+    phone: Optional[str] = ""
+    company: Optional[str] = ""
+    business_type: Optional[str] = ""  # ΟΕ, ΑΕ, ΙΚΕ, Ιδιώτης, Ατομική, κλπ
+    books_type: Optional[str] = ""     # απλογραφικά / διπλογραφικά / Β'
+    employees: Optional[str] = ""
+    services: Optional[List[str]] = []
+    message: Optional[str] = ""
 
 
 # ------------ File Parsing ------------
@@ -652,11 +743,19 @@ async def root():
 
 
 @api.post("/auth/login")
-async def login(payload: LoginIn, response: Response):
+async def login(payload: LoginIn, request: Request, response: Response):
     email = payload.email.lower().strip()
+    ip = request.client.host if request.client else ""
+    # Check lockout BEFORE checking password
+    locked = await check_lockout(email)
+    if locked is not None:
+        raise HTTPException(status_code=429,
+                            detail=f"Πολλές αποτυχημένες προσπάθειες. Δοκιμάστε ξανά σε {locked} λεπτά.")
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
+        await record_login_attempt(email, success=False, ip=ip)
         raise HTTPException(status_code=401, detail="Λάθος email ή κωδικός")
+    await record_login_attempt(email, success=True, ip=ip)
     access = create_access_token(user["id"], user["email"], user["role"])
     refresh = create_refresh_token(user["id"])
     set_auth_cookies(response, access, refresh)
@@ -762,7 +861,41 @@ async def upload_file(client_id: str, file: UploadFile = File(...), admin: dict 
         "target": f"{client_id}/{safe_name}",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
-    return {"name": safe_name, "size": len(content)}
+
+    # Try to detect last month from trial balance (for nicer email)
+    last_month_label = ""
+    if ext in (".xls", ".xlsx"):
+        try:
+            tb = parse_trial_balance(dest)
+            if tb and tb.get("accounts"):
+                months_with_data = set()
+                for acc in tb["accounts"]:
+                    for m_idx, vals in acc["monthly"].items():
+                        if (vals.get("debit") or 0) or (vals.get("credit") or 0):
+                            months_with_data.add(m_idx)
+                if months_with_data:
+                    lm = max(months_with_data)
+                    last_month_label = f"{GREEK_MONTHS[lm - 1]} {tb.get('year') or ''}".strip()
+        except Exception:
+            pass
+
+    # Notify client by email
+    period = f"μέχρι τον μήνα {last_month_label}" if last_month_label else "με νέα στοιχεία"
+    body = f"""<p>Αγαπητέ/ή <strong>{user.get('name','')}</strong>,</p>
+<p>Σας ενημερώνουμε ότι η εικόνα σας στο portal της <strong>DM Accounting</strong> ενημερώθηκε {period}.</p>
+<p>Μπορείτε να συνδεθείτε στο πελατειακό σας portal για να δείτε αναλυτικά τα οικονομικά σας στοιχεία:</p>
+<p style="text-align:center;margin:24px 0;">
+  <a href="{os.environ.get('FRONTEND_URL','#')}/login"
+     style="background:#1E3A8A;color:#fff;padding:12px 24px;text-decoration:none;font-weight:bold;display:inline-block;">
+    Σύνδεση στο Portal
+  </a>
+</p>
+<p style="color:#64748B;font-size:13px;">Αρχείο: {safe_name}</p>"""
+    asyncio.create_task(send_email_safe(user["email"],
+                                        f"Ενημέρωση εικόνας — DM Accounting{(' · ' + last_month_label) if last_month_label else ''}",
+                                        _email_wrapper("Η εικόνα σας ενημερώθηκε", body)))
+
+    return {"name": safe_name, "size": len(content), "notification_sent": True}
 
 
 @api.get("/admin/clients/{client_id}/files/{filename}")
@@ -830,6 +963,69 @@ async def update_client(client_id: str, payload: dict, admin: dict = Depends(req
     return {"ok": True}
 
 
+# ------------ Routes: Quote Requests ------------
+@api.post("/quotes")
+async def create_quote(payload: QuoteIn, request: Request):
+    qid = str(uuid.uuid4())
+    doc = {
+        "id": qid,
+        "name": payload.name.strip(),
+        "email": payload.email.lower().strip(),
+        "phone": (payload.phone or "").strip(),
+        "company": (payload.company or "").strip(),
+        "business_type": (payload.business_type or "").strip(),
+        "books_type": (payload.books_type or "").strip(),
+        "employees": (payload.employees or "").strip(),
+        "services": payload.services or [],
+        "message": (payload.message or "").strip(),
+        "status": "new",
+        "ip": request.client.host if request.client else "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.quote_requests.insert_one(doc)
+
+    services_html = "".join(f"<li>{s}</li>" for s in (payload.services or [])) or "<li>—</li>"
+    body = f"""<p><strong>Νέο αίτημα προσφοράς</strong> από το site σας.</p>
+<table cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
+  <tr><td style="color:#64748B;">Όνομα:</td><td><strong>{doc['name']}</strong></td></tr>
+  <tr><td style="color:#64748B;">Email:</td><td><a href="mailto:{doc['email']}">{doc['email']}</a></td></tr>
+  <tr><td style="color:#64748B;">Τηλέφωνο:</td><td>{doc['phone'] or '—'}</td></tr>
+  <tr><td style="color:#64748B;">Εταιρεία:</td><td>{doc['company'] or '—'}</td></tr>
+  <tr><td style="color:#64748B;">Νομική μορφή:</td><td>{doc['business_type'] or '—'}</td></tr>
+  <tr><td style="color:#64748B;">Βιβλία:</td><td>{doc['books_type'] or '—'}</td></tr>
+  <tr><td style="color:#64748B;">Εργαζόμενοι:</td><td>{doc['employees'] or '—'}</td></tr>
+  <tr><td style="color:#64748B;vertical-align:top;">Υπηρεσίες:</td><td><ul style="margin:0;padding-left:18px;">{services_html}</ul></td></tr>
+</table>
+<p style="margin-top:16px;padding:12px;background:#F5F5F5;border-left:3px solid #1E3A8A;">{(doc['message'] or '—').replace(chr(10),'<br>')}</p>"""
+    asyncio.create_task(send_email_safe(OWNER_EMAIL,
+                                        f"Νέο αίτημα προσφοράς · {doc['name']}",
+                                        _email_wrapper("Νέο αίτημα προσφοράς", body)))
+    return {"id": qid, "ok": True}
+
+
+@api.get("/admin/quotes")
+async def list_quotes(admin: dict = Depends(require_admin)):
+    cursor = db.quote_requests.find({}, {"_id": 0}).sort("created_at", -1)
+    return await cursor.to_list(length=500)
+
+
+@api.patch("/admin/quotes/{qid}")
+async def update_quote_status(qid: str, payload: dict, admin: dict = Depends(require_admin)):
+    status = payload.get("status")
+    if status not in ("new", "contacted", "won", "lost"):
+        raise HTTPException(status_code=400, detail="Άκυρη κατάσταση")
+    result = await db.quote_requests.update_one({"id": qid}, {"$set": {"status": status}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Δε βρέθηκε")
+    return {"ok": True}
+
+
+@api.delete("/admin/quotes/{qid}")
+async def delete_quote(qid: str, admin: dict = Depends(require_admin)):
+    await db.quote_requests.delete_one({"id": qid})
+    return {"ok": True}
+
+
 # ------------ Routes: Dashboards ------------
 @api.get("/client/dashboard")
 async def client_dashboard(user: dict = Depends(get_current_user)):
@@ -864,6 +1060,7 @@ async def admin_stats(admin: dict = Depends(require_admin)):
         total_vat += agg["totals"]["vat"]
         total_files += len(agg["files"])
     recent_logs = await db.audit_logs.find({}, {"_id": 0}).sort("timestamp", -1).limit(10).to_list(length=10)
+    new_quotes = await db.quote_requests.count_documents({"status": "new"})
     return {
         "total_clients": total_clients,
         "total_income": round(total_income, 2),
@@ -871,6 +1068,7 @@ async def admin_stats(admin: dict = Depends(require_admin)):
         "total_profit": round(total_income - total_expense, 2),
         "total_vat": round(total_vat, 2),
         "total_files": total_files,
+        "new_quotes": new_quotes,
         "recent_logs": recent_logs,
     }
 
@@ -892,6 +1090,11 @@ app.add_middleware(
 async def startup():
     await db.users.create_index("email", unique=True)
     await db.audit_logs.create_index("timestamp")
+    await db.login_attempts.create_index("timestamp")
+    await db.quote_requests.create_index("created_at")
+    # Purge old login attempts (>30 days)
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    await db.login_attempts.delete_many({"timestamp": {"$lt": cutoff}})
     # backfill books_type default for existing clients
     await db.users.update_many(
         {"role": "client", "books_type": {"$exists": False}},

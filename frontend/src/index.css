@@ -50,7 +50,49 @@ body {
     --ring: 224 64% 33%;
     --radius: 0.25rem;
   }
+  .dark {
+    --background: 222 47% 5%;
+    --foreground: 0 0% 98%;
+    --card: 222 47% 8%;
+    --card-foreground: 0 0% 98%;
+    --popover: 222 47% 8%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 222 33% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 222 33% 12%;
+    --muted-foreground: 215 16% 60%;
+    --accent: 222 33% 12%;
+    --accent-foreground: 0 0% 98%;
+    --border: 222 33% 14%;
+    --input: 222 33% 14%;
+    --ring: 217 91% 60%;
+  }
 }
+
+/* Dark mode overrides for hardcoded brand colors */
+.dark body { background: #0B1220; color: #F1F5F9; }
+.dark .bg-white { background-color: #111827 !important; }
+.dark .bg-\[\#F5F5F5\] { background-color: #0B1220 !important; }
+.dark .text-slate-900 { color: #F1F5F9 !important; }
+.dark .text-slate-700 { color: #CBD5E1 !important; }
+.dark .text-slate-600 { color: #94A3B8 !important; }
+.dark .text-slate-500 { color: #94A3B8 !important; }
+.dark .text-slate-400 { color: #94A3B8 !important; }
+.dark .border-slate-200 { border-color: #1F2937 !important; }
+.dark .border-slate-100 { border-color: #1F2937 !important; }
+.dark .border-slate-300 { border-color: #374151 !important; }
+.dark .bg-slate-50 { background-color: #1F2937 !important; }
+.dark .bg-slate-100 { background-color: #1F2937 !important; }
+.dark .bg-slate-200 { background-color: #1F2937 !important; }
+.dark .divide-slate-200 > * + * { border-color: #1F2937 !important; }
+.dark input, .dark select, .dark textarea {
+  background: #0B1220 !important;
+  color: #F1F5F9 !important;
+}
+.dark .dm-logo, .dark .dm-logo .letters { color: #FFFFFF !important; }
+.dark .dm-logo .underline { background: #FFFFFF !important; }
 
 @layer base {
   * { @apply border-border; }

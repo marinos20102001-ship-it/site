@@ -24,7 +24,9 @@ export default function Footer() {
             <li><Link to="/tax-calculator" className="hover:text-white transition-colors">Υπολογιστής Φόρου</Link></li>
             <li><Link to="/about" className="hover:text-white transition-colors">Σχετικά με Εμάς</Link></li>
             <li><Link to="/contact" className="hover:text-white transition-colors">Επικοινωνία</Link></li>
+            <li><Link to="/quote" className="hover:text-white transition-colors">Αίτημα Προσφοράς</Link></li>
             <li><Link to="/login" className="hover:text-white transition-colors">Πελατειακή Σύνδεση</Link></li>
+            <li><Link to="/privacy" className="hover:text-white transition-colors">Πολιτική Απορρήτου</Link></li>
           </ul>
         </div>
 
