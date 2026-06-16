@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Briefcase, FileText, Wallet, Building2, Lightbulb, Users, Globe, MonitorCog, Check } from "lucide-react";
+import { ArrowRight, Briefcase, FileText, Wallet, Building2, Lightbulb, Users, Globe, Check } from "lucide-react";
 
 const services = [
   { icon: Briefcase, title: "Λογιστική υποστήριξη", desc: "Πλήρης τήρηση βιβλίων Β' & Γ' κατηγορίας με ακρίβεια και συνέπεια." },
@@ -10,7 +10,6 @@ const services = [
   { icon: Lightbulb, title: "Συμβουλευτικές υπηρεσίες", desc: "Στρατηγική φορολογικού & επιχειρηματικού σχεδιασμού." },
   { icon: Users, title: "Εργασιακά θέματα", desc: "Συμβάσεις, προσλήψεις, αποχωρήσεις και εργατικές διαφορές." },
   { icon: Globe, title: "Κατασκευή Site", desc: "Σύγχρονες, responsive ιστοσελίδες για την επιχείρησή σας." },
-  { icon: MonitorCog, title: "Μηχανογράφηση Λογιστηρίου", desc: "Ψηφιοποίηση & αυτοματοποίηση λογιστικών διαδικασιών." },
 ];
 
 export default function Home() {

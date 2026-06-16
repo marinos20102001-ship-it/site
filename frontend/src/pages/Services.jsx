@@ -1,5 +1,5 @@
 import React from "react";
-import { Briefcase, FileText, Wallet, Building2, Lightbulb, Users, Globe, MonitorCog } from "lucide-react";
+import { Briefcase, FileText, Wallet, Building2, Lightbulb, Users, Globe } from "lucide-react";
 
 const services = [
   { icon: Briefcase, title: "Λογιστική υποστήριξη",
@@ -16,8 +16,6 @@ const services = [
     items: ["Συμβάσεις εργασίας", "Προσλήψεις & αποχωρήσεις", "Εργατικές διαφορές", "Συμβουλευτική σε εργοδότες"] },
   { icon: Globe, title: "Κατασκευή Site",
     items: ["Σχεδιασμός & ανάπτυξη επαγγελματικής ιστοσελίδας", "Responsive design για κινητά & tablets", "SEO βελτιστοποίηση & ταχύτητα φόρτωσης", "Τεχνική υποστήριξη & συντήρηση"] },
-  { icon: MonitorCog, title: "Μηχανογράφηση Λογιστηρίου",
-    items: ["Εγκατάσταση & παραμετροποίηση λογιστικών εφαρμογών", "Ψηφιοποίηση παραστατικών & αρχείων", "Διασύνδεση με ERP & cloud συστήματα", "Εκπαίδευση προσωπικού & τεχνική υποστήριξη"] },
 ];
 
 export default function Services() {

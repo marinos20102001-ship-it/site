@@ -32,9 +32,8 @@ Auto file processing από /clients-data/{customer-id}/ για .xlsx, .csv, .pd
 - **Tax Calculator** (νέα σελίδα 13 Ιουν 2026): πλήρης λογική υπολογισμού φόρου εισοδήματος
   2025/2026 με age-based brackets (under25, 25-30), rent income tax, dependents relief,
   withholding, Recharts breakdown. Premium UI διαφορετικό από το original του χρήστη.
-- **Νέες υπηρεσίες (16 Φεβ 2026)**: Προστέθηκαν "Κατασκευή Site" (Globe icon) και
-  "Μηχανογράφηση Λογιστηρίου" (MonitorCog icon) στις σελίδες Home, Services και ως
-  επιλογές στη φόρμα Quote.
+- **Νέες υπηρεσίες (16 Φεβ 2026)**: Προστέθηκε "Κατασκευή Site" (Globe icon) στις σελίδες
+  Home, Services και ως επιλογή στη φόρμα Quote.
 
 ## Tech Notes
 - httpOnly cookies (SameSite=None, Secure) + Bearer token fallback (localStorage).
