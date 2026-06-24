@@ -9,6 +9,7 @@ const links = [
   { to: "/", label: "Αρχική" },
   { to: "/services", label: "Υπηρεσίες" },
   { to: "/tax-calculator", label: "Υπολογιστής Φόρου" },
+  { to: "/blog", label: "Blog" },
   { to: "/about", label: "Σχετικά με Εμάς" },
   { to: "/contact", label: "Επικοινωνία" },
 ];

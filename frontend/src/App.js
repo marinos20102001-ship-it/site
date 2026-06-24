@@ -18,6 +18,7 @@ import TaxCalculator from "@/pages/TaxCalculator";
 import SimpleBooks from "@/pages/SimpleBooks";
 import Quote from "@/pages/Quote";
 import Privacy from "@/pages/Privacy";
+import Blog from "@/pages/Blog";
 import { Toaster } from "sonner";
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
               <Route path="/contact" element={<Layout><Contact /></Layout>} />
               <Route path="/tax-calculator" element={<Layout><TaxCalculator /></Layout>} />
               <Route path="/quote" element={<Layout><Quote /></Layout>} />
+              <Route path="/blog" element={<Layout><Blog /></Layout>} />
               <Route path="/privacy" element={<Layout><Privacy /></Layout>} />
               <Route path="/login" element={<Login />} />
               <Route

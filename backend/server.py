@@ -1380,6 +1380,95 @@ async def startup():
     )
 
 
+# ------------ Blog / Taxheaven RSS ------------
+import feedparser
+import httpx
+
+TAXHEAVEN_FEEDS = {
+    "news": {
+        "label": "Νέα & Ειδήσεις",
+        "url": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_new.xml",
+    },
+    "decisions": {
+        "label": "Πρόσφατες Αποφάσεις",
+        "url": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_law.xml",
+    },
+    "laws": {
+        "label": "Πρόσφατοι Νόμοι",
+        "url": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_lawl.xml",
+    },
+    "deadlines": {
+        "label": "Προθεσμίες Μηνός",
+        "url": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_dat.xml",
+    },
+    "articles": {
+        "label": "Άρθρα & Μελέτες",
+        "url": "https://www.taxheaven.gr/bibliothiki/soft/xml/soft_art.xml",
+    },
+}
+
+# In-memory cache: {category: (timestamp, items)}
+_feed_cache: Dict[str, Any] = {}
+FEED_CACHE_TTL_SECONDS = 30 * 60  # 30 minutes
+
+
+async def _fetch_feed(category: str) -> List[Dict[str, Any]]:
+    now = datetime.now(timezone.utc).timestamp()
+    cached = _feed_cache.get(category)
+    if cached and now - cached[0] < FEED_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    cfg = TAXHEAVEN_FEEDS[category]
+    try:
+        async with httpx.AsyncClient(timeout=15, headers={"User-Agent": "Mozilla/5.0 DM-Accounting-Blog"}) as cx:
+            r = await cx.get(cfg["url"])
+            r.raise_for_status()
+            parsed = feedparser.parse(r.content)
+    except Exception as e:
+        logger.warning(f"RSS fetch failed for {category}: {e}")
+        if cached:
+            return cached[1]
+        return []
+
+    items = []
+    for entry in parsed.entries[:30]:
+        desc = (entry.get("description") or "").strip()
+        # Strip CDATA / basic HTML
+        desc = re.sub(r"<[^>]+>", "", desc)
+        items.append({
+            "title": (entry.get("title") or "").strip(),
+            "description": desc,
+            "link": entry.get("link") or "",
+            "pub_date": entry.get("published") or "",
+            "author": entry.get("author") or "",
+        })
+
+    _feed_cache[category] = (now, items)
+    return items
+
+
+@api.get("/blog/categories")
+async def blog_categories():
+    return [{"key": k, "label": v["label"]} for k, v in TAXHEAVEN_FEEDS.items()]
+
+
+@api.get("/blog/feed")
+async def blog_feed(category: str = "news"):
+    if category not in TAXHEAVEN_FEEDS:
+        raise HTTPException(status_code=400, detail="Άγνωστη κατηγορία")
+    items = await _fetch_feed(category)
+    return {
+        "category": category,
+        "label": TAXHEAVEN_FEEDS[category]["label"],
+        "source": "taxheaven.gr",
+        "items": items,
+    }
+
+
+# Re-mount router to pick up routes defined above
+app.include_router(api)
+
+
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
