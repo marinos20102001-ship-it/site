@@ -36,6 +36,11 @@ Auto file processing από /clients-data/{customer-id}/ για .xlsx, .csv, .pd
   Home, Services και ως επιλογή στη φόρμα Quote.
 - **Blog αφαιρέθηκε (17 Φεβ 2026)**: Η σελίδα `/blog` και τα RSS endpoints αφαιρέθηκαν
   ολοκληρωτικά κατόπιν αιτήματος χρήστη.
+- **SEO Tags (17 Φεβ 2026)**: Προστέθηκε `react-helmet-async` με reusable `<SEO />`
+  component στο `/app/frontend/src/components/SEO.jsx`. Per-page titles, meta descriptions,
+  canonical URLs, Open Graph + Twitter cards σε: Home, Services, About, Contact,
+  TaxCalculator, Quote, Privacy. Structured data JSON-LD (AccountingService schema),
+  `robots.txt` + `sitemap.xml` στο `/app/frontend/public/`.
 
 ## Tech Notes
 - httpOnly cookies (SameSite=None, Secure) + Bearer token fallback (localStorage).

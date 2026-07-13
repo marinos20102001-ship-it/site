@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Briefcase, FileText, Wallet, Building2, Lightbulb, Users, Globe, Check } from "lucide-react";
+import SEO from "@/components/SEO";
 
 const services = [
   { icon: Briefcase, title: "Λογιστική υποστήριξη", desc: "Πλήρης τήρηση βιβλίων Β' & Γ' κατηγορίας με ακρίβεια και συνέπεια." },
@@ -15,6 +16,11 @@ const services = [
 export default function Home() {
   return (
     <div data-testid="home-page">
+      <SEO
+        title="Αξιόπιστες Λογιστικές & Φοροτεχνικές Υπηρεσίες"
+        description="Το DM Accounting είναι σύγχρονο λογιστικό γραφείο για επιχειρήσεις και ιδιώτες. Τήρηση βιβλίων Β' & Γ' κατηγορίας, φορολογικές δηλώσεις, μισθοδοσία, ΦΠΑ, συμβουλευτικές υπηρεσίες."
+        path="/"
+      />
       {/* Hero */}
       <section className="relative h-[88vh] min-h-[600px] overflow-hidden">
         <img

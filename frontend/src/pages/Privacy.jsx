@@ -1,8 +1,15 @@
 import React from "react";
 
+import SEO from "@/components/SEO";
+
 export default function Privacy() {
   return (
     <div data-testid="privacy-page" className="bg-white">
+      <SEO
+        title="Πολιτική Απορρήτου"
+        description="Πολιτική απορρήτου του DM Accounting σύμφωνα με τον GDPR (ΕΕ 2016/679) και την ελληνική νομοθεσία (Ν. 4624/2019)."
+        path="/privacy"
+      />
       <section className="bg-[#1E3A8A] text-white">
         <div className="px-6 md:px-12 lg:px-20 max-w-[1400px] mx-auto py-20 md:py-28">
           <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200 mb-4">— Νομικά</div>

@@ -1,9 +1,15 @@
 import React from "react";
 import { MapPin, Mail, Clock } from "lucide-react";
+import SEO from "@/components/SEO";
 
 export default function Contact() {
   return (
     <div data-testid="contact-page" className="bg-white">
+      <SEO
+        title="Επικοινωνία — Λογιστικό Γραφείο DM Accounting"
+        description="Επικοινωνήστε με το DM Accounting για λογιστικές και φοροτεχνικές υπηρεσίες. Στοιχεία επικοινωνίας, διεύθυνση γραφείου και ώρες εξυπηρέτησης."
+        path="/contact"
+      />
       <section className="bg-[#1E3A8A] text-white">
         <div className="px-6 md:px-12 lg:px-20 max-w-[1400px] mx-auto py-24 md:py-32">
           <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200 mb-4">— Επικοινωνία</div>

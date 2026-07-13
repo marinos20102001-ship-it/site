@@ -1,5 +1,6 @@
 import React from "react";
 import { Briefcase, FileText, Wallet, Building2, Lightbulb, Users, Globe } from "lucide-react";
+import SEO from "@/components/SEO";
 
 const services = [
   { icon: Briefcase, title: "Λογιστική υποστήριξη",
@@ -21,6 +22,11 @@ const services = [
 export default function Services() {
   return (
     <div data-testid="services-page" className="bg-white">
+      <SEO
+        title="Υπηρεσίες — Λογιστική, Φορολογικές, Μισθοδοσία"
+        description="Πλήρες φάσμα λογιστικών & φοροτεχνικών υπηρεσιών: Τήρηση βιβλίων Β' & Γ' κατηγορίας, φορολογικές δηλώσεις Ε1/Ε2/Ε3/Ε9, μισθοδοσία & ΑΠΔ, σύσταση επιχειρήσεων, συμβουλευτικές υπηρεσίες, εργασιακά θέματα, κατασκευή site."
+        path="/services"
+      />
       <section className="bg-[#1E3A8A] text-white">
         <div className="px-6 md:px-12 lg:px-20 max-w-[1400px] mx-auto py-24 md:py-32">
           <div className="text-[10px] uppercase tracking-[0.3em] text-blue-200 mb-4">— Υπηρεσίες</div>

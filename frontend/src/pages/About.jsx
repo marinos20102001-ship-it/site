@@ -1,9 +1,15 @@
 import React from "react";
 import { Award, ShieldCheck, Target, HeartHandshake } from "lucide-react";
+import SEO from "@/components/SEO";
 
 export default function About() {
   return (
     <div data-testid="about-page" className="bg-white">
+      <SEO
+        title="Σχετικά με Εμάς — DM Accounting"
+        description="Γνωρίστε το DM Accounting: σύγχρονο λογιστικό γραφείο που συνδυάζει την επαγγελματική εμπειρία με ψηφιακά εργαλεία, cloud διαχείριση και προσωποποιημένο portal πελατών."
+        path="/about"
+      />
       <section className="py-20 md:py-32 bg-white">
         <div className="px-6 md:px-12 lg:px-20 max-w-[1400px] mx-auto grid md:grid-cols-12 gap-12 items-center">
           <div className="md:col-span-6">

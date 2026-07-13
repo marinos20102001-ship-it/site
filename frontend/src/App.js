@@ -1,6 +1,7 @@
 import React from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { ConfirmProvider } from "@/context/ConfirmContext";
@@ -23,10 +24,11 @@ import { Toaster } from "sonner";
 function App() {
   return (
     <div className="App">
-      <ThemeProvider>
-        <AuthProvider>
-          <ConfirmProvider>
-            <BrowserRouter>
+      <HelmetProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <ConfirmProvider>
+              <BrowserRouter>
             <Toaster position="top-right" />
             <Routes>
               <Route path="/" element={<Layout><Home /></Layout>} />
@@ -68,6 +70,7 @@ function App() {
           </ConfirmProvider>
         </AuthProvider>
       </ThemeProvider>
+      </HelmetProvider>
     </div>
   );
 }

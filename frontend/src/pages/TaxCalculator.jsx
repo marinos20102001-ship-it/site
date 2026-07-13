@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Calculator, ArrowRight, TrendingUp, TrendingDown, Wallet, Users, Home, Briefcase, User, Sparkles } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend } from "recharts";
+import SEO from "@/components/SEO";
 
 // Tax brackets per year
 const SCALES = {
@@ -112,6 +113,11 @@ export default function TaxCalculator() {
 
   return (
     <div data-testid="tax-calc-page" className="bg-white">
+      <SEO
+        title="Υπολογιστής Φόρου Εισοδήματος 2025 / 2026"
+        description="Δωρεάν online υπολογιστής φόρου εισοδήματος για φυσικά πρόσωπα. Νέες κλίμακες 2025 & 2026, μειώσεις για νέους (κάτω 25 και 25-30), εξαρτώμενα μέλη, εισόδημα από ενοίκια."
+        path="/tax-calculator"
+      />
       {/* Hero */}
       <section className="bg-[#1E3A8A] text-white">
         <div className="px-6 md:px-12 lg:px-20 max-w-[1400px] mx-auto py-20 md:py-28">

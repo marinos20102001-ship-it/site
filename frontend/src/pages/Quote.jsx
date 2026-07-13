@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, formatApiErrorDetail } from "../lib/api";
 import { ArrowRight, Check, AlertCircle, RefreshCw, Shield } from "lucide-react";
+import SEO from "@/components/SEO";
 
 const SERVICES = [
   "Λογιστική υποστήριξη",
@@ -82,6 +83,11 @@ export default function Quote() {
 
   return (
     <div data-testid="quote-page" className="bg-white">
+      <SEO
+        title="Αίτημα Προσφοράς — Λογιστικές Υπηρεσίες"
+        description="Ζητήστε εξατομικευμένη προσφορά για λογιστικές και φοροτεχνικές υπηρεσίες. Απάντηση εντός 24 ωρών με προσφορά προσαρμοσμένη στις ανάγκες σας."
+        path="/quote"
+      />
       {/* Hero */}
       <section className="bg-[#1E3A8A] text-white">
         <div className="px-6 md:px-12 lg:px-20 max-w-[1400px] mx-auto py-20 md:py-28">
