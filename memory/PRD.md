@@ -34,11 +34,8 @@ Auto file processing από /clients-data/{customer-id}/ για .xlsx, .csv, .pd
   withholding, Recharts breakdown. Premium UI διαφορετικό από το original του χρήστη.
 - **Νέες υπηρεσίες (16 Φεβ 2026)**: Προστέθηκε "Κατασκευή Site" (Globe icon) στις σελίδες
   Home, Services και ως επιλογή στη φόρμα Quote.
-- **Blog / Φορολογικές Ενημερώσεις (16 Φεβ 2026)**: Νέα σελίδα `/blog` που αντλεί
-  live RSS από taxheaven.gr (5 κατηγορίες: Νέα, Αποφάσεις, Νόμοι, Προθεσμίες,
-  Άρθρα). Backend caching 30 λεπτά (in-memory). Endpoints: `GET /api/blog/categories`,
-  `GET /api/blog/feed?category=...`. Tab UI με dark mode support, articles ανοίγουν
-  στην πρωτότυπη πηγή σε νέα καρτέλα. Dependencies: feedparser, httpx.
+- **Blog αφαιρέθηκε (17 Φεβ 2026)**: Η σελίδα `/blog` και τα RSS endpoints αφαιρέθηκαν
+  ολοκληρωτικά κατόπιν αιτήματος χρήστη.
 
 ## Tech Notes
 - httpOnly cookies (SameSite=None, Secure) + Bearer token fallback (localStorage).
