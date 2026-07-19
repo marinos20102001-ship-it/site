@@ -1,0 +1,66 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: dm-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: dm_accounting
+    # No ports exposed to host — only internal network
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 })"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dm-backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      DB_NAME: dm_accounting
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SENDER_EMAIL: ${SENDER_EMAIL}
+      OWNER_EMAIL: ${OWNER_EMAIL}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      FRONTEND_URL: ${FRONTEND_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      CLIENTS_DATA_DIR: /data/clients-data
+      PORT: "8080"
+    volumes:
+      - clients_data:/data/clients-data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Same-origin — nginx proxies /api → backend
+        REACT_APP_BACKEND_URL: ""
+    container_name: dm-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"   # local access: http://localhost:8080
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: dm-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
+    depends_on:
+      - frontend
+
+volumes:
+  mongo_data:
+  clients_data:
