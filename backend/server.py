@@ -1265,9 +1265,13 @@ async def admin_stats(admin: dict = Depends(require_admin)):
 # ------------ Mount ------------
 app.include_router(api)
 
+_cors_origins_env = os.environ.get("CORS_ORIGINS", "")
+_default_origin = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()] if _cors_origins_env else [_default_origin, "http://localhost:3000"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.environ.get("FRONTEND_URL", "http://localhost:3000"), "http://localhost:3000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

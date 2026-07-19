@@ -48,7 +48,7 @@ Auto file processing από /clients-data/{customer-id}/ για .xlsx, .csv, .pd
 - Admin seed: idempotent (updates password if .env changed).
 
 ## Test Credentials
-- Admin: admin@dmaccounting.gr / DMAdmin2026!
+- Admin: admin@dmaccounting.gr / sagapaoeygenia12
 - Client: client@dmaccounting.gr / Client2026!
 
 ## Backlog (P1/P2)
